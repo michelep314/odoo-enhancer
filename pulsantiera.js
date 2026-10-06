@@ -177,7 +177,7 @@
     panel = el("div", { id: "ps-panel" });
     panelKind = kind;
     document.body.append(panel);
-    await (kind === "ts" ? renderTs(env) : renderPanel(env));
+    await (kind === "ts" ? renderTs(env) : kind === "bg" ? renderBg() : renderPanel(env));
   }
 
   const fillViewSelect = (sel, modes, current) => {
@@ -655,6 +655,8 @@
         el("button", { className: "ps-toggle", textContent: "☰", title: "Mostra/nascondi (Alt+P)",
           onclick: () => bar.classList.toggle("min") }),
         ...buttons.map((b) => el("button", { textContent: b.label, onclick: () => open(b).catch(fail) })),
+        el("button", { className: "ps-manage", textContent: "🖼", title: "Sfondo",
+          onclick: () => togglePanel("bg").catch(fail) }),
         el("button", { className: "ps-manage", textContent: "⏱", title: "Compila fogli ore",
           onclick: () => togglePanel("ts").catch(fail) }),
         el("button", { className: "ps-manage", textContent: "+", title: "Aggiungi o gestisci pulsanti",
@@ -1196,6 +1198,9 @@
   const TINT_ALPHA = 0.2;         // intensità (0–1)
   const US_BADGE = true;          // mostra la US in alto
   const HIDE_ORIGINAL_US = true;  // nasconde la US nella posizione originale
+  const TAG_BADGES = true;        // mostra in alto anche le etichette, colorate
+  const TAG_FIELDS = ["tag_ids"]; // campi etichetta da spostare in alto
+  const HIDE_ORIGINAL_TAGS = true;
   const US_RE = /^\s*US\s*-?\s*\d+(?:[.,]\d+)*\s*$/i;
   const US_KEY = "ps-us-colors-v1";
   // Tavolozza di Odoo 17: indice = valore del campo color. [esadecimale, nome, testo scuro]
@@ -1218,12 +1223,15 @@
     catch (e) { alert("Salvataggio non riuscito: " + e.message); }
   };
   const usKey = (v) => v.toUpperCase().replace(/\s+/g, "").replace(",", ".");
-  const usColor = (key) => {
-    if (usColors[key]) return usColors[key];
+  const hashColor = (text) => {
     let h = 0;
-    for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    return (h % 11) + 1;  // colore automatico, stabile per la stessa US
+    for (const ch of text.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return (h % 11) + 1;  // colore automatico, stabile per lo stesso testo
   };
+  const usColor = (key) => usColors[key] || hashColor(key);
+  // etichette: scelta locale > colore impostato in Odoo > automatico
+  const tagColor = (key, text, odooColor) =>
+      usColors[key] || (Number.isInteger(odooColor) && PALETTE[odooColor] ? odooColor : hashColor(text));
 
   // Tutte le schede kanban visibili con il loro record (un solo giro dell'albero Owl)
   function kanbanRecords() {
@@ -1300,25 +1308,49 @@
         card.style.removeProperty("--ps-tint");
       }
 
+      const labels = [];
       const v = US_BADGE ? usValue(rec) : null;
-      let badge = card.querySelector(".ps-us");
-      if (!v) { badge?.remove(); continue; }
-      const key = usKey(v), ci = usColor(key);
-      if (!badge) {
-        badge = el("button", { type: "button", className: "ps-us", title: "Clic per cambiare il colore di questa US" });
-        badge.addEventListener("click", onUsClick);
-        for (const ev of ["mousedown", "pointerdown"]) badge.addEventListener(ev, (e) => e.stopPropagation());
-        badgeContainer(card).prepend(badge);
+      if (v) labels.push({ key: usKey(v), text: v, ci: usColor(usKey(v)) });
+      if (TAG_BADGES) {
+        for (const f of TAG_FIELDS) {
+          for (const r of rec.data?.[f]?.records || []) {
+            const text = String(r.data?.display_name || r.data?.name || "").trim();
+            if (!text || text === v) continue;
+            const key = `tag:${r.resModel}:${r.resId}`;
+            labels.push({ key, text, ci: tagColor(key, text, r.data?.color), tagModel: r.resModel, tagId: r.resId });
+          }
+        }
       }
-      if (badge.textContent !== v) badge.textContent = v;
-      if (badge.dataset.key !== key) badge.dataset.key = key;
-      if (badge.dataset.ci !== String(ci)) {
-        badge.dataset.ci = String(ci);
-        badge.style.background = PALETTE[ci][0];
-        badge.style.color = PALETTE[ci][2] ? "#1d2029" : "#fff";
+
+      let box = card.querySelector(".ps-labels");
+      if (!labels.length) { box?.remove(); continue; }
+      if (!box) {
+        box = el("div", { className: "ps-labels" });
+        badgeContainer(card).prepend(box);
       }
-      if (HIDE_ORIGINAL_US) hideOriginal(card, v);
+      const sig = JSON.stringify(labels.map((l) => [l.key, l.text, l.ci]));
+      if (box.dataset.sig !== sig) {
+        box.dataset.sig = sig;
+        box.replaceChildren(...labels.map((l) => makeChip(l, rec)));
+      }
+      if (v && HIDE_ORIGINAL_US) hideOriginal(card, v);
+      if (TAG_BADGES && HIDE_ORIGINAL_TAGS) {
+        for (const f of TAG_FIELDS) {
+          const w = card.querySelector(`.o_field_widget[name="${f}"]`);
+          if (w && !w.dataset.psHidden && !w.contains(box)) w.dataset.psHidden = "1";
+        }
+      }
     }
+  }
+
+  function makeChip(l, rec) {
+    const b = el("button", { type: "button", className: "ps-us", textContent: l.text,
+      title: "Clic per cambiare il colore" });
+    b.style.background = PALETTE[l.ci][0];
+    b.style.color = PALETTE[l.ci][2] ? "#1d2029" : "#fff";
+    b.addEventListener("click", (e) => onLabelClick(e, l, rec));
+    for (const ev of ["mousedown", "pointerdown"]) b.addEventListener(ev, (e) => e.stopPropagation());
+    return b;
   }
 
   /* selettore colore della US */
@@ -1332,26 +1364,38 @@
     document.removeEventListener("mousedown", pickerOutside, true);
     document.removeEventListener("keydown", pickerKey, true);
   }
-  function setUsColor(key, ci) {
-    if (ci == null) delete usColors[key]; else usColors[key] = ci;
-    saveUsColors();
+  async function setLabelColor(l, rec, ci, toOdoo) {
     closePicker();
+    try {
+      if (toOdoo && l.tagId && ci != null) {
+        await getEnv().services.orm.write(l.tagModel, [l.tagId], { color: ci });
+        delete usColors[l.key];
+        saveUsColors();
+        await rec.model.load().catch(() => {});
+      } else {
+        if (ci == null) delete usColors[l.key]; else usColors[l.key] = ci;
+        saveUsColors();
+      }
+    } catch (e) { fail(e); }
     decorate();
   }
-  function onUsClick(e) {
+  function onLabelClick(e, l, rec) {
     e.preventDefault();
     e.stopPropagation();
-    const b = e.currentTarget, key = b.dataset.key;
+    const b = e.currentTarget;
     closePicker();
+    const odooChk = l.tagId ? el("input", { type: "checkbox" }) : null;
     picker = el("div", { id: "ps-us-picker" },
-        el("div", { className: "t", textContent: `Colore per ${b.textContent}` }),
+        el("div", { className: "t", textContent: `Colore per ${l.text}` }),
         el("div", { className: "sw" }, ...PALETTE.slice(1).map(([hex, name], i) => {
-          const s = el("button", { type: "button", title: name, className: usColor(key) === i + 1 ? "on" : "",
-            onclick: () => setUsColor(key, i + 1) });
-          s.style.background = hex;
-          return s;
+          const s2 = el("button", { type: "button", title: name, className: l.ci === i + 1 ? "on" : "",
+            onclick: () => setLabelColor(l, rec, i + 1, odooChk?.checked) });
+          s2.style.background = hex;
+          return s2;
         })),
-        el("button", { type: "button", className: "auto", textContent: "Automatico", onclick: () => setUsColor(key, null) }));
+        odooChk ? el("label", { className: "odoo" }, odooChk, "Salva in Odoo (lo vedono tutti)") : null,
+        el("button", { type: "button", className: "auto", textContent: l.tagId ? "Colore di Odoo / automatico" : "Automatico",
+          onclick: () => setLabelColor(l, rec, null, false) }));
     document.body.append(picker);
     const r = b.getBoundingClientRect();
     picker.style.left = Math.max(8, Math.min(r.left, innerWidth - picker.offsetWidth - 8)) + "px";
@@ -1386,6 +1430,9 @@
       padding:2px 8px;border:0;border-radius:4px;font:600 12px/1.5 system-ui,sans-serif;letter-spacing:.01em;
       cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .ps-us:hover{filter:brightness(1.1)}
+    .ps-labels{display:flex;flex-wrap:wrap;gap:4px;width:100%;margin:0 0 6px}
+    .ps-labels .ps-us{margin:0}
+    #ps-us-picker label.odoo{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:#b8bac4;cursor:pointer}
     .ps-us:focus-visible{outline:2px solid #017e84;outline-offset:1px}
     #ps-us-picker{position:fixed;z-index:10001;padding:10px;border-radius:8px;background:#262a36;
       box-shadow:0 4px 16px #000a;color:#e6e6ea;font:13px/1.4 system-ui,sans-serif}
@@ -1397,6 +1444,209 @@
     #ps-us-picker .auto{width:100%;margin-top:8px;padding:6px;border:0;border-radius:6px;background:#3a3f4d;
       color:#e6e6ea;font:inherit;cursor:pointer}
     #ps-us-picker .auto:hover{background:#4a5060}
+  ` }));
+
+  /* ---------- Sfondo personalizzato (solo locale: niente viene caricato su Odoo) ---------- */
+  const BG_KEY = "ps-bg-v1";
+  const BG_PRESETS = {
+    notte: ["Notte", "linear-gradient(135deg,#1e2a47 0%,#3a1f4d 100%)"],
+    oceano: ["Oceano", "linear-gradient(135deg,#0f4c75 0%,#1b262c 100%)"],
+    bosco: ["Bosco", "linear-gradient(135deg,#134e3a 0%,#1b2a24 100%)"],
+    tramonto: ["Tramonto", "linear-gradient(135deg,#7a2e3a 0%,#2b1a3d 100%)"],
+    aurora: ["Aurora", "linear-gradient(135deg,#0b3d3a 0%,#2a1e5c 55%,#5c1e4a 100%)"],
+    grafite: ["Grafite", "linear-gradient(180deg,#2b2f38 0%,#16181d 100%)"],
+  };
+
+  // Le immagini stanno in IndexedDB del browser (più spazio di localStorage)
+  const idb = (() => {
+    let dbp = null;
+    const db = () => dbp || (dbp = new Promise((res, rej) => {
+      const r = indexedDB.open("ps-pulsantiera", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("files");
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    }));
+    const tx = async (mode, fn) => {
+      const d = await db();
+      return new Promise((res, rej) => {
+        const t = d.transaction("files", mode);
+        const rq = fn(t.objectStore("files"));
+        t.oncomplete = () => res(rq?.result);
+        t.onerror = () => rej(t.error);
+      });
+    };
+    return {
+      get: (k) => tx("readonly", (st) => st.get(k)),
+      set: (k, v) => tx("readwrite", (st) => st.put(v, k)),
+      del: (k) => tx("readwrite", (st) => st.delete(k)),
+    };
+  })();
+
+  let bgCfg = (() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(BG_KEY));
+      if (v && typeof v.scopes === "object") return v;
+    } catch { /* default */ }
+    return { scopes: {}, kanbanOnly: true, glass: true };
+  })();
+  const saveBg = () => {
+    try { localStorage.setItem(BG_KEY, JSON.stringify(bgCfg)); }
+    catch (e) { alert("Salvataggio non riuscito: " + e.message); }
+  };
+  const viewKey = () => {
+    const p = new URLSearchParams(location.hash.slice(1));
+    const a = p.get("action");
+    return a ? `a${a}-${p.get("active_id") || 0}` : "home";
+  };
+
+  async function resizeImage(file, max = 2560) {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * k);
+    c.height = Math.round(bmp.height * k);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close?.();
+    return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("conversione non riuscita"))), "image/jpeg", 0.85));
+  }
+
+  let bgSig = null, bgUrl = null;
+  async function applyBg() {
+    const k = viewKey();
+    const scopeKey = bgCfg.scopes[k] ? k : "*";
+    const sc = bgCfg.scopes[scopeKey];
+    const sig = JSON.stringify([scopeKey, sc, bgCfg.kanbanOnly, bgCfg.glass]);
+    if (sig === bgSig) return;
+    bgSig = sig;
+    const root = document.documentElement;
+    let img = null;
+    try {
+      if (sc?.type === "preset") img = BG_PRESETS[sc.value]?.[1] || null;
+      else if (sc?.type === "color") img = `linear-gradient(${sc.value}, ${sc.value})`;
+      else if (sc?.type === "url") img = `url(${JSON.stringify(sc.value)})`;
+      else if (sc?.type === "image") {
+        const blob = await idb.get(sc.value);
+        if (blob) {
+          if (bgUrl) URL.revokeObjectURL(bgUrl);
+          bgUrl = URL.createObjectURL(blob);
+          img = `url(${JSON.stringify(bgUrl)})`;
+        }
+      }
+    } catch (e) { console.warn("[pulsantiera] sfondo:", e); }
+    if (!img) { delete root.dataset.psBg; delete root.dataset.psGlass; return; }
+    root.style.setProperty("--ps-bg-img", img);
+    root.style.setProperty("--ps-bg-dim", String((sc.dim ?? 30) / 100));
+    root.dataset.psBg = bgCfg.kanbanOnly ? "kanban" : "all";
+    if (bgCfg.glass) root.dataset.psGlass = "1"; else delete root.dataset.psGlass;
+  }
+  const reapplyBg = () => { bgSig = null; return applyBg(); };
+
+  async function renderBg() {
+    const curKey = viewKey();
+    const curName = document.querySelector(".o_breadcrumb .active, .o_last_breadcrumb_item")?.textContent.trim() || "questa vista";
+    const scopeSel = el("select", {},
+        el("option", { value: "*", textContent: "Tutte le viste" }),
+        curKey !== "home" ? el("option", { value: curKey, textContent: `Solo "${curName}"` }) : null);
+    scopeSel.value = bgCfg.scopes[curKey] ? curKey : "*";
+    const cur = () => bgCfg.scopes[scopeSel.value];
+
+    const dimIn = el("input", { type: "range", min: "0", max: "80", step: "5" });
+    const dimOut = el("span", { className: "hint" });
+    const syncDim = () => { dimIn.value = String(cur()?.dim ?? 30); dimOut.textContent = ` ${dimIn.value}%`; };
+    syncDim();
+
+    async function setScope(sc) {
+      const key = scopeSel.value, old = bgCfg.scopes[key];
+      if (old?.type === "image" && (!sc || sc.value !== old.value)) await idb.del(old.value).catch(() => {});
+      if (sc) bgCfg.scopes[key] = { ...sc, dim: Number(dimIn.value) };
+      else delete bgCfg.scopes[key];
+      saveBg();
+      await reapplyBg();
+    }
+    const run = (p) => p.catch(fail);
+
+    const tiles = el("div", { className: "bg-tiles" }, ...Object.entries(BG_PRESETS).map(([k, [name, css]]) => {
+      const t = el("button", { type: "button", className: "bg-tile", title: name,
+        onclick: () => run(setScope({ type: "preset", value: k })) }, el("span", { textContent: name }));
+      t.style.backgroundImage = css;
+      return t;
+    }));
+
+    const colorIn = el("input", { type: "color", value: cur()?.type === "color" ? cur().value : "#1e2a47" });
+    colorIn.onchange = () => run(setScope({ type: "color", value: colorIn.value }));
+
+    const fileIn = el("input", { type: "file", accept: "image/*" });
+    fileIn.onchange = () => run((async () => {
+      const f = fileIn.files?.[0];
+      if (!f) return;
+      const blob = await resizeImage(f);
+      const key = `bg:${scopeSel.value}`;
+      await idb.set(key, blob);
+      await setScope({ type: "image", value: key });
+      fileIn.value = "";
+    })());
+
+    const urlIn = el("input", { placeholder: "https://…/immagine.jpg" });
+    const urlBtn = el("button", { textContent: "Usa link", onclick: () => run((async () => {
+        let u;
+        try { u = new URL(urlIn.value.trim()); } catch { return alert("Link non valido."); }
+        if (!/^https?:$/.test(u.protocol)) return alert("Usa un link http o https.");
+        const ok = await new Promise((res) => { const im = new Image(); im.onload = () => res(true); im.onerror = () => res(false); im.src = u.href; });
+        if (!ok) return alert("Immagine non caricabile: link errato o bloccato dal sito che la ospita.");
+        await setScope({ type: "url", value: u.href });
+      })()) });
+
+    dimIn.oninput = () => {
+      dimOut.textContent = ` ${dimIn.value}%`;
+      const c = cur();
+      if (c) { c.dim = Number(dimIn.value); saveBg(); reapplyBg(); }
+    };
+    scopeSel.onchange = syncDim;
+
+    const chk = (text, checked, onchange) => {
+      const i = el("input", { type: "checkbox", checked, onchange: () => onchange(i.checked) });
+      return el("label", { className: "chk" }, i, text);
+    };
+
+    panel.replaceChildren(
+        el("h4", { textContent: "Sfondo" }),
+        el("label", { textContent: "Applica a" }), scopeSel,
+        el("label", { textContent: "Sfumature" }), tiles,
+        el("label", { textContent: "Tinta unita" }), colorIn,
+        el("label", { textContent: "Immagine dal computer" }), fileIn,
+        el("label", { textContent: "Immagine da link" }), el("div", { className: "inline" }, urlIn, urlBtn),
+        el("label", {}, "Oscuramento", dimOut), dimIn,
+        chk("Solo nelle viste kanban", bgCfg.kanbanOnly, (v) => { bgCfg.kanbanOnly = v; saveBg(); reapplyBg(); }),
+        chk("Colonne semitrasparenti", bgCfg.glass, (v) => { bgCfg.glass = v; saveBg(); reapplyBg(); }),
+        el("p", { className: "hint", textContent: "L'immagine resta solo in questo browser: niente viene caricato su Odoo e i colleghi non la vedono." }),
+        el("div", { className: "acts" },
+            el("button", { textContent: "Rimuovi sfondo", onclick: () => run(setScope(null)) }),
+            el("button", { textContent: "Chiudi", onclick: () => togglePanel("bg") })));
+  }
+
+  // Odoo cambia vista senza ricaricare: ricontrollo l'URL
+  let lastHref = "";
+  setInterval(() => { if (location.href !== lastHref) { lastHref = location.href; applyBg(); } }, 700);
+  applyBg();
+
+  const BG_HOST = ['html[data-ps-bg="all"] .o_action_manager', 'html[data-ps-bg="kanban"] .o_action_manager:has(.o_kanban_view)'];
+  const GLASS_HOST = BG_HOST.map((h) => h.replace("html[", "html[data-ps-glass][")) ;
+  const under = (hosts, sel) => hosts.flatMap((h) => sel.split(",").map((x) => `${h} ${x.trim()}`)).join(",");
+  document.head.append(el("style", { textContent: `
+    ${BG_HOST.join(",")}{background:linear-gradient(rgba(0,0,0,var(--ps-bg-dim)),rgba(0,0,0,var(--ps-bg-dim))),
+      var(--ps-bg-img) center/cover no-repeat!important}
+    ${under(BG_HOST, ".o_view_controller, .o_content, .o_kanban_renderer")}{background:transparent!important}
+    ${under(GLASS_HOST, ".o_kanban_group:not(.o_column_folded)")}{background:rgba(18,20,28,.55)!important;
+      backdrop-filter:blur(6px);border-radius:10px}
+    ${under(GLASS_HOST, ".o_kanban_header")}{background:rgba(18,20,28,.8)!important;backdrop-filter:blur(6px)}
+    #ps-panel input[type=range]{padding:0;border:0;background:none;accent-color:#714b67}
+    #ps-panel input[type=color]{height:34px;padding:2px;cursor:pointer}
+    #ps-panel input[type=file]{padding:5px}
+    #ps-panel .bg-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+    #ps-panel .bg-tile{height:48px;padding:0;display:flex;align-items:flex-end;justify-content:flex-start;
+      border:1px solid #4a5060;background-size:cover}
+    #ps-panel .bg-tile span{padding:2px 6px;font-size:11px;color:#fff;text-shadow:0 1px 2px #000}
+    #ps-panel .bg-tile:hover{outline:2px solid #017e84}
   ` }));
 
   console.log("[pulsantiera] caricata", location.href);
