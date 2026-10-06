@@ -5,7 +5,7 @@
   "description": "Nuove funzionalita' per personalizzare odoo",
   "content_scripts": [
     {
-      "matches": ["https://stesi-pes.odoo.com/web*"],
+      "matches": ["https://*.odoo.com/web*"],
       "js": ["pulsantiera.js"],
       "run_at": "document_idle",
       "world": "MAIN"
