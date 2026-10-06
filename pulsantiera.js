@@ -1083,6 +1083,18 @@
       })),
     ];
 
+    const prioPop = async () => {
+      const curP = prioOf({ data });
+      return [
+        el("h4", { textContent: "Priorità" }),
+        el("div", { className: "prio-list" }, ...PRIO_ORDER.map((k) => {
+          const b = prioButton(k, curP === k);
+          b.onclick = () => done(write({ color: PRIO[k].color }, `Priorità: ${PRIO[k].label.toLowerCase()}.`));
+          return b;
+        })),
+      ];
+    };
+
     const copyLink = async () => {
       const url = `${location.origin}/web#id=${id}&model=${TASK}&view_type=form`;
       try { await navigator.clipboard.writeText(url); notification.add("Link copiato.", { type: "info" }); }
@@ -1107,7 +1119,9 @@
       ["user", "Modifica membri", (b) => showPop(b, membersPop)],
       ["image", "Cambia copertina", (b) => showPop(b, coverPop)],
       DATE_FIELDS.length ? ["clock", "Modifica le date", (b) => showPop(b, datesPop)] : null,
-      has("color") ? ["palette", "Colore scheda", (b) => showPop(b, colorPop)] : null,
+      has("color") ? (colSettings(colName(card.closest(".o_kanban_group"))).prio
+          ? ["palette", "Priorità", (b) => showPop(b, prioPop)]
+          : ["palette", "Colore scheda", (b) => showPop(b, colorPop)]) : null,
       ["move", "Sposta", (b) => showPop(b, movePop)],
       has(SPRINT_FIELD) ? ["zap", "Sprint", (b) => showPop(b, sprintPop)] : null,
       ["copy", "Copia scheda", () => { closeQE(); return duplicate(rec); }],
@@ -1260,6 +1274,27 @@
   const tagColor = (key, text, odooColor) =>
       usColors[key] || (Number.isInteger(odooColor) && PALETTE[odooColor] ? odooColor : hashColor(text));
 
+  // Priorità dei bug ricavata dal colore della scheda in Odoo
+  const PRIO = {
+    high: { label: "Alta", color: 1, rank: 1, bars: 3 },
+    medium: { label: "Media", color: 3, rank: 2, bars: 2 },
+    low: { label: "Bassa", color: 10, rank: 3, bars: 1 },
+    none: { label: "Da valutare", color: 0, rank: 4, bars: 0 },
+  };
+  const PRIO_ORDER = ["high", "medium", "low", "none"];
+  const prioOf = (rec) => {
+    const c = rec.data?.color || 0;
+    return PRIO_ORDER.find((k) => PRIO[k].color === c) || null;  // altri colori: nessuna priorità riconosciuta
+  };
+  const barsSvg = (k) => `<svg viewBox="0 0 12 12" aria-hidden="true">${[0, 1, 2].map((i) =>
+      `<rect x="${i * 4 + 0.5}" y="${8 - i * 3}" width="3" height="${4 + i * 3}" rx="0.8" fill="currentColor" opacity="${i < PRIO[k].bars ? 1 : 0.28}"/>`).join("")}</svg>`;
+  function prioButton(k, on) {
+    const b = el("button", { type: "button", className: `ps-prio ps-prio-${k}${on ? " on" : ""}` });
+    b.innerHTML = barsSvg(k);
+    b.append(PRIO[k].label);
+    return b;
+  }
+
   // Tutte le schede kanban visibili con il loro record (un solo giro dell'albero Owl)
   function kanbanRecords() {
     const root = getEnv() && odoo.__WOWL_DEBUG__.root.__owl__;
@@ -1325,9 +1360,10 @@
     const records = kanbanRecords();
     for (const [card, rec] of records) {
       if (!DECO_MODELS.includes(rec.resModel)) continue;
+      const ccfg = colSettings(colName(card.closest(".o_kanban_group")));
 
       const c = rec.data?.color;
-      const tint = TINT_CARDS && Number.isInteger(c) && PALETTE[c] ? rgba(PALETTE[c][0], TINT_ALPHA) : null;
+      const tint = TINT_CARDS && !ccfg.prio && Number.isInteger(c) && PALETTE[c] ? rgba(PALETTE[c][0], TINT_ALPHA) : null;
       if (tint) {
         if (card.style.getPropertyValue("--ps-tint") !== tint) card.style.setProperty("--ps-tint", tint);
         if (!card.dataset.psTint) card.dataset.psTint = "1";
@@ -1337,6 +1373,8 @@
       }
 
       const labels = [];
+      const pk = ccfg.prio ? prioOf(rec) : null;
+      if (pk) labels.push({ key: "prio:" + pk, text: PRIO[pk].label, prio: pk });
       const v = US_BADGE ? usValue(rec) : null;
       if (v) labels.push({ key: usKey(v), text: v, ci: usColor(usKey(v)) });
       if (TAG_BADGES) {
@@ -1373,6 +1411,13 @@
   }
 
   function makeChip(l, rec) {
+    if (l.prio) {
+      const pb = prioButton(l.prio, false);
+      pb.title = `Priorità ${PRIO[l.prio].label.toLowerCase()}: clic per cambiarla`;
+      pb.addEventListener("click", (e) => onPrioClick(e, rec));
+      for (const ev of ["mousedown", "pointerdown"]) pb.addEventListener(ev, (e) => e.stopPropagation());
+      return pb;
+    }
     const b = el("button", { type: "button", className: "ps-us", textContent: l.text,
       title: "Clic per cambiare il colore" });
     b.style.background = PALETTE[l.ci][0];
@@ -1407,6 +1452,37 @@
       }
     } catch (e) { fail(e); }
     decorate();
+  }
+  function placePicker(anchor) {
+    const r = anchor.getBoundingClientRect();
+    picker.style.left = Math.max(8, Math.min(r.left, innerWidth - picker.offsetWidth - 8)) + "px";
+    picker.style.top = (r.bottom + 6 + picker.offsetHeight > innerHeight ? r.top - picker.offsetHeight - 6 : r.bottom + 6) + "px";
+    setTimeout(() => {
+      document.addEventListener("mousedown", pickerOutside, true);
+      document.addEventListener("keydown", pickerKey, true);
+    });
+  }
+  function onPrioClick(e, rec) {
+    e.preventDefault();
+    e.stopPropagation();
+    const anchor = e.currentTarget;
+    closePicker();
+    const cur = prioOf(rec);
+    picker = el("div", { id: "ps-us-picker" },
+        el("div", { className: "t", textContent: "Priorità" }),
+        el("div", { className: "prio-list" }, ...PRIO_ORDER.map((k) => {
+          const o = prioButton(k, cur === k);
+          o.onclick = async () => {
+            closePicker();
+            try {
+              await getEnv().services.orm.write(rec.resModel, [rec.resId], { color: PRIO[k].color });
+              await rec.model.load();
+            } catch (err) { fail(err); }
+          };
+          return o;
+        })));
+    document.body.append(picker);
+    placePicker(anchor);
   }
   function onLabelClick(e, l, rec) {
     e.preventDefault();
@@ -1704,7 +1780,7 @@
   const COLS_KEY = "ps-cols-v1";
   const QE_LABELS = {
     open: "Apri scheda", hours: "Registra ore", tag: "Modifica etichette", user: "Modifica membri",
-    image: "Cambia copertina", clock: "Modifica le date", palette: "Colore scheda", move: "Sposta",
+    image: "Cambia copertina", clock: "Modifica le date", palette: "Colore scheda / Priorità", move: "Sposta",
     zap: "Sprint", copy: "Copia scheda", link: "Copia link", archive: "Archivia",
   };
   // "*" = tutte le colonne; le altre chiavi sono i nomi delle colonne in minuscolo
@@ -1730,7 +1806,11 @@
 
   const colName = (g) => (g && !g.classList.contains("o_column_folded")
       ? g.querySelector(".o_column_title")?.textContent.trim() || null : null);
-  const colSettings = (name) => ({ ...(colCfg.cols["*"] || {}), ...((name && colCfg.cols[name.toLowerCase()]) || {}) });
+  const colSettings = (name) => {
+    const r = { ...(colCfg.cols["*"] || {}), ...((name && colCfg.cols[name.toLowerCase()]) || {}) };
+    if (r.prio === undefined) r.prio = !!name && /bug/i.test(name);  // colonne "bug": priorità attiva di default
+    return r;
+  };
   const qeHiddenFor = (card) => colSettings(colName(card?.closest(".o_kanban_group"))).qeHidden || [];
 
   const recText = (rec, k) => {
@@ -1771,7 +1851,8 @@
     return f.us === "__none" ? !v : !!v && usKey(v) === f.us;
   };
   const tagOk = (rec, f) => !f?.tag || tagNames(rec).includes(f.tag);
-  const matchFilter = (rec, f) => usOk(rec, f) && tagOk(rec, f);
+  const prioOk = (rec, f) => !f?.prio || (prioOf(rec) || "none") === f.prio;
+  const matchFilter = (rec, f) => usOk(rec, f) && tagOk(rec, f) && prioOk(rec, f);
   const colCollapsed = {};  // gruppi US chiusi, per colonna
 
   // fascia delle intestazioni: estende il colore anche negli spazi tra le colonne
@@ -1814,20 +1895,54 @@
         else if (!card.dataset.psFiltered) card.dataset.psFiltered = "1";
       }
 
-      // raggruppa per US: intestazioni di gruppo colorate e richiudibili
+      // riepilogo priorità nell'intestazione (clic = filtro)
+      const head = g.querySelector(":scope > .o_kanban_header");
+      let sum = head?.querySelector(".ps-prio-sum");
+      if (cfg.prio && head) {
+        const counts = { high: 0, medium: 0, low: 0, none: 0 };
+        for (const [, r] of recs) counts[prioOf(r) || "none"]++;
+        if (!sum) {
+          sum = el("div", { className: "ps-prio-sum" });
+          for (const ev of ["mousedown", "pointerdown"]) sum.addEventListener(ev, (e) => e.stopPropagation());
+          head.append(sum);
+        }
+        const active = colFilters[lname]?.prio || "";
+        const sig = JSON.stringify([counts, active]);
+        if (sum.dataset.sig !== sig) {
+          sum.dataset.sig = sig;
+          sum.replaceChildren(...PRIO_ORDER.filter((k) => counts[k]).map((k) => {
+            const b = el("button", { type: "button", className: `ps-prio-dot ps-prio-${k}${active === k ? " on" : ""}`,
+              title: `${PRIO[k].label}: ${counts[k]} (clic per filtrare)` }, el("span", { className: "d" }), String(counts[k]));
+            b.setAttribute("aria-pressed", String(active === k));
+            b.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const curF = colFilters[lname] || {};
+              const nf = { ...curF, prio: curF.prio === k ? null : k };
+              if (!nf.us && !nf.tag && !nf.prio) delete colFilters[lname]; else colFilters[lname] = nf;
+              decorate();
+            });
+            return b;
+          }));
+        }
+      } else sum?.remove();
+
+      // ordine: gruppi per US e/o priorità (alta → bassa)
+      const prioSort = cfg.prio && cfg.prioSort;
+      const rankOf = (rec) => (prioSort ? PRIO[prioOf(rec) || "none"].rank : 0);
       if (cfg.groupUs) {
         if (!g.dataset.psSort) g.dataset.psSort = "1";
         const groups = new Map();
-        const none = { label: "Senza US", cards: [] };
+        const none = { label: "Senza US", items: [] };
         for (const [card, rec] of recs) {
           const v = usValue(rec);
-          if (!v) { none.cards.push(card); continue; }
+          if (!v) { none.items.push([card, rec]); continue; }
           const k = usKey(v);
-          if (!groups.has(k)) groups.set(k, { label: v, cards: [] });
-          groups.get(k).cards.push(card);
+          if (!groups.has(k)) groups.set(k, { label: v, items: [] });
+          groups.get(k).items.push([card, rec]);
         }
         const list = [...groups].sort((a, b) => natCmp(a[0], b[0]));
-        if (none.cards.length && list.length) list.push(["__none", none]);
+        if (none.items.length && list.length) list.push(["__none", none]);
         const closed = colCollapsed[lname] || (colCollapsed[lname] = new Set());
         const seen = new Set();
         list.forEach(([k, gr], i) => {
@@ -1846,12 +1961,13 @@
             for (const ev of ["mousedown", "pointerdown"]) sep.addEventListener(ev, (e) => e.stopPropagation());
             g.append(sep);
           }
-          const visible = gr.cards.filter((c) => !c.dataset.psFiltered).length;
+          const total = gr.items.length;
+          const visible = gr.items.filter(([c]) => !c.dataset.psFiltered).length;
           const isClosed = closed.has(k);
           const ci = k === "__none" ? null : usColor(k);
           const hex = ci ? PALETTE[ci][0] : "#8d90a0";
           const fg = !ci || PALETTE[ci][2] ? "#1d2029" : "#fff";
-          const sig = JSON.stringify([gr.label, visible, gr.cards.length, isClosed, hex]);
+          const sig = JSON.stringify([gr.label, visible, total, isClosed, hex]);
           if (sep.dataset.sig !== sig) {
             sep.dataset.sig = sig;
             sep.style.setProperty("--ps-us-c", hex);
@@ -1861,19 +1977,33 @@
             sep.replaceChildren(
                 el("span", { className: "chev", textContent: isClosed ? "▸" : "▾" }),
                 el("span", { className: "name", textContent: gr.label }),
-                el("span", { className: "count", textContent: visible === gr.cards.length ? String(visible) : `${visible}/${gr.cards.length}` }));
+                el("span", { className: "count", textContent: visible === total ? String(visible) : `${visible}/${total}` }));
           }
-          const so = String(i * 2 + 1), co = String(i * 2 + 2);
+          const so = String(i * 10);
           if (sep.style.order !== so) sep.style.order = so;
           sep.hidden = visible === 0;
-          for (const c of gr.cards) {
+          for (const [c, r] of gr.items) {
+            const co = String(i * 10 + 1 + rankOf(r));
             if (c.style.order !== co) c.style.order = co;
             if (isClosed) { if (!c.dataset.psCollapsed) c.dataset.psCollapsed = "1"; }
             else if (c.dataset.psCollapsed) delete c.dataset.psCollapsed;
           }
         });
-        if (!list.length) for (const [card] of recs) card.style.removeProperty("order");
+        if (!list.length) {
+          for (const [card, rec] of recs) {
+            const o = String(rankOf(rec));
+            if (card.style.order !== o) card.style.order = o;
+          }
+        }
         for (const sep of g.querySelectorAll(":scope > .ps-usgroup")) if (!seen.has(sep.dataset.key)) sep.remove();
+      } else if (prioSort) {
+        if (!g.dataset.psSort) g.dataset.psSort = "1";
+        for (const sep of g.querySelectorAll(":scope > .ps-usgroup")) sep.remove();
+        for (const [card, rec] of recs) {
+          const o = String(rankOf(rec));
+          if (card.style.order !== o) card.style.order = o;
+          if (card.dataset.psCollapsed) delete card.dataset.psCollapsed;
+        }
       } else if (g.dataset.psSort) {
         delete g.dataset.psSort;
         for (const [card] of recs) { card.style.removeProperty("order"); delete card.dataset.psCollapsed; }
@@ -1956,7 +2086,7 @@
       if (fl.tag && !tagCount.has(fl.tag)) tagCount.set(fl.tag, 0);
       const setFilter = (patch) => {
         const nf = { ...(colFilters[lname] || {}), ...patch };
-        if (!nf.us && !nf.tag) delete colFilters[lname]; else colFilters[lname] = nf;
+        if (!nf.us && !nf.tag && !nf.prio) delete colFilters[lname]; else colFilters[lname] = nf;
         decorate();
         draw();
       };
@@ -1974,6 +2104,17 @@
       tagSel.value = fl.tag || "";
       tagSel.onchange = () => setFilter({ tag: tagSel.value || null });
       const shown = recs.filter(([, r]) => matchFilter(r, fl)).length;
+      let prioSel = null;
+      if (colSettings(name).prio) {
+        const pc = { high: 0, medium: 0, low: 0, none: 0 };
+        let pTot = 0;
+        for (const [, r] of recs) if (usOk(r, fl) && tagOk(r, fl)) { pTot++; pc[prioOf(r) || "none"]++; }
+        prioSel = el("select", { title: "Priorità" },
+            el("option", { value: "", textContent: `Tutte le priorità (${pTot})` }),
+            ...PRIO_ORDER.map((k) => el("option", { value: k, textContent: `${PRIO[k].label} (${pc[k]})` })));
+        prioSel.value = fl.prio || "";
+        prioSel.onchange = () => setFilter({ prio: prioSel.value || null });
+      }
 
       /* colore della fascia intestazioni (vale per tutte le colonne) */
       const look = colCfg.look;
@@ -2025,6 +2166,7 @@
           el("h4", { textContent: name }),
           el("label", { className: "lbl", textContent: "Filtra le schede (temporaneo)" }),
           el("div", { className: "fl" }, usSel, tagSel),
+          prioSel ? el("div", { className: "fl one" }, prioSel) : null,
           el("p", { className: "hint", textContent: colFilters[lname]
                 ? `Visibili ${shown} di ${recs.length} schede.` : "Puoi combinare user story ed etichetta." }),
           colFilters[lname] ? el("div", { className: "acts tight" }, el("button", { type: "button", textContent: "Azzera filtri",
@@ -2032,6 +2174,9 @@
           el("h4", { className: "sep", textContent: "Impostazioni" }),
           scopeSel,
           chk("Raggruppa per user story", !!cur.groupUs, (v) => edit((c) => { c.groupUs = v; })),
+          chk("Priorità dal colore della scheda", !!cur.prio, (v) => edit((c) => { c.prio = v; })),
+          cur.prio ? chk("Ordina per priorità (alta → bassa)", !!cur.prioSort, (v) => edit((c) => { c.prioSort = v; })) : null,
+          cur.prio ? el("p", { className: "hint", textContent: "Rosso = alta, giallo = media, verde = bassa, nessun colore = da valutare." }) : null,
           el("label", { className: "lbl", textContent: "Colore intestazioni (fascia su tutte le colonne)" }),
           el("div", { className: "inline" }, sw, custom),
           el("label", { className: "lbl", textContent: "Nascondi nelle schede" }),
@@ -2109,6 +2254,29 @@
     .o_kanban_group[data-ps-sort]>.o_kanban_header{order:-3}
     .o_kanban_group[data-ps-sort]>.o_kanban_quick_create{order:-2}
     .o_kanban_record[data-ps-collapsed]{display:none!important}
+    .ps-prio-high{--pc:#F06050}.ps-prio-medium{--pc:#F7CD1F}.ps-prio-low{--pc:#30C381}.ps-prio-none{--pc:#9aa0b0}
+    .ps-prio{display:inline-flex;align-items:center;gap:5px;padding:1px 9px 1px 7px;border:1px solid var(--pc);
+      border-radius:999px;background:color-mix(in srgb,var(--pc) 16%,transparent);color:var(--pc);
+      font:600 11.5px/1.6 system-ui,sans-serif;white-space:nowrap;cursor:pointer}
+    .ps-prio.ps-prio-none{border-style:dashed}
+    .ps-prio:hover{background:color-mix(in srgb,var(--pc) 28%,transparent)}
+    .ps-prio.on{background:var(--pc);color:#1d2029}
+    .ps-prio svg{width:12px;height:12px;flex:none}
+    .ps-prio:focus-visible{outline:2px solid #017e84;outline-offset:1px}
+    .o_kanban_header:has(>.ps-prio-sum){flex-wrap:wrap}
+    .ps-prio-sum{display:flex;flex-wrap:wrap;flex-basis:100%;gap:6px;padding:2px 0 6px}
+    .ps-prio-dot{display:inline-flex;align-items:center;gap:5px;padding:0 8px;border:1px solid transparent;
+      border-radius:999px;background:rgba(127,127,127,.18);color:inherit;font:600 11.5px/1.7 system-ui,sans-serif;cursor:pointer}
+    .ps-prio-dot .d{width:8px;height:8px;border-radius:50%;background:var(--pc)}
+    .ps-prio-dot:hover{background:rgba(127,127,127,.3)}
+    .ps-prio-dot.on{border-color:var(--pc);background:color-mix(in srgb,var(--pc) 28%,transparent)}
+    .ps-prio-dot:focus-visible{outline:2px solid #017e84;outline-offset:1px}
+    #ps-us-picker .prio-list,#ps-qe .prio-list{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+    #ps-qe .prio-list .ps-prio{padding:5px 12px 5px 9px;border:1px solid var(--pc);border-radius:999px;
+      background:color-mix(in srgb,var(--pc) 16%,transparent);color:var(--pc);font-size:13px}
+    #ps-qe .prio-list .ps-prio.ps-prio-none{border-style:dashed}
+    #ps-qe .prio-list .ps-prio:hover{background:color-mix(in srgb,var(--pc) 28%,transparent)}
+    #ps-qe .prio-list .ps-prio.on{background:var(--pc);color:#1d2029}
     .o_kanban_group>.ps-usgroup{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;margin:12px 0 6px;
       padding:6px 8px;border:0;border-left:4px solid var(--ps-us-c);border-radius:6px;background:rgba(127,127,127,.14);
       color:inherit;font:600 12.5px/1.3 system-ui,sans-serif;text-align:left;cursor:pointer}
@@ -2159,6 +2327,7 @@
     #ps-colpop .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
     #ps-colpop .acts.tight{margin-top:6px}
     #ps-colpop .fl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
+    #ps-colpop .fl.one{grid-template-columns:minmax(0,1fr);margin-top:6px}
     #ps-colpop .acts button{border:0;border-radius:6px;padding:7px 12px;background:#3a3f4d;color:#e6e6ea;
       font:inherit;cursor:pointer;white-space:nowrap}
     #ps-colpop .acts button:hover{background:#4a5060}
