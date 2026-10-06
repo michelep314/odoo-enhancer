@@ -168,15 +168,31 @@
 
   /* ---------- pannello di gestione ---------- */
   let panel = null, panelKind = null;
+  // evidenzia nella barra il pulsante del pannello aperto
+  const syncActive = () => {
+    for (const b of document.querySelectorAll("#ps-bar [data-panel]")) {
+      const on = b.dataset.panel === panelKind;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-pressed", String(on));
+    }
+  };
+  function closePanel() {
+    if (!panel) return;
+    panel.remove();
+    panel = null;
+    panelKind = null;
+    syncActive();
+  }
   async function togglePanel(kind = "buttons") {
     const same = panel && panelKind === kind;
-    if (panel) { panel.remove(); panel = null; panelKind = null; }
+    closePanel();
     if (same) return;
     const env = getEnv();
     if (!env) return alert("Odoo non ancora caricato: riprova tra un secondo.");
     panel = el("div", { id: "ps-panel" });
     panelKind = kind;
     document.body.append(panel);
+    syncActive();
     await (kind === "ts" ? renderTs(env) : kind === "bg" ? renderBg() : renderPanel(env));
   }
 
@@ -621,8 +637,8 @@
     #ps-bar button:focus-visible,#ps-panel :focus-visible{outline:2px solid #017e84;outline-offset:1px}
     #ps-bar .ps-toggle,#ps-bar .ps-manage{background:transparent;padding:8px 8px}
     #ps-bar.min button:not(.ps-toggle){display:none}
-    #ps-panel{position:fixed;left:12px;bottom:64px;z-index:9999;width:420px;max-width:calc(100vw - 24px);
-      max-height:70vh;overflow:auto;box-sizing:border-box;padding:14px;border-radius:10px;
+    #ps-panel{position:fixed;left:12px;bottom:64px;z-index:9999;width:500px;max-width:calc(100vw - 24px);
+      max-height:70vh;overflow-x:hidden;overflow-y:auto;box-sizing:border-box;padding:14px;border-radius:10px;
       background:#262a36;color:#e6e6ea;box-shadow:0 4px 18px #0009;font:13px/1.4 system-ui,sans-serif}
     #ps-panel h4{margin:0 0 6px;font-size:14px;font-weight:600;color:#fff}
     #ps-panel h4.sep{margin-top:16px}
@@ -643,29 +659,39 @@
     #ps-panel label.chk input{width:auto;margin:0}
     #ps-panel .inline{display:flex;gap:6px}
     #ps-panel .inline select{flex:1}
-    #ps-panel .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    #ps-panel .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+    #ps-panel .row span{min-width:0}
+    #ps-panel .row select.mini{flex:none;max-width:130px}
+    #ps-panel .row button,#ps-panel .acts button,#ps-panel .inline button{flex:none;white-space:nowrap}
+    #ps-panel .inline input,#ps-panel .inline select{flex:1;min-width:0}
+    #ps-bar button.active{background:#714b67;color:#fff}
     #ps-panel .days{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
     #ps-panel .days span{padding:2px 7px;border-radius:4px;background:#1d2029;font-size:12px}
     #ps-panel .warn{margin:6px 0 0;color:#e5a55d;font-size:12px}
   ` }));
 
   const bar = el("div", { id: "ps-bar" });
+  // riducendo la barra si chiude anche il pannello aperto
+  const toggleBar = () => { if (bar.classList.toggle("min")) closePanel(); };
+  const panelBtn = (kind, text, title) => {
+    const b = el("button", { className: "ps-manage", textContent: text, title,
+      onclick: () => togglePanel(kind).catch(fail) });
+    b.dataset.panel = kind;
+    return b;
+  };
   function render() {
     bar.replaceChildren(
-        el("button", { className: "ps-toggle", textContent: "☰", title: "Mostra/nascondi (Alt+P)",
-          onclick: () => bar.classList.toggle("min") }),
+        el("button", { className: "ps-toggle", textContent: "☰", title: "Mostra/nascondi (Alt+P)", onclick: toggleBar }),
         ...buttons.map((b) => el("button", { textContent: b.label, onclick: () => open(b).catch(fail) })),
-        el("button", { className: "ps-manage", textContent: "🖼", title: "Sfondo",
-          onclick: () => togglePanel("bg").catch(fail) }),
-        el("button", { className: "ps-manage", textContent: "⏱", title: "Compila fogli ore",
-          onclick: () => togglePanel("ts").catch(fail) }),
-        el("button", { className: "ps-manage", textContent: "+", title: "Aggiungi o gestisci pulsanti",
-          onclick: () => togglePanel("buttons").catch(fail) }));
+        panelBtn("bg", "🖼", "Sfondo"),
+        panelBtn("ts", "⏱", "Compila fogli ore"),
+        panelBtn("buttons", "+", "Aggiungi o gestisci pulsanti"));
+    syncActive();
   }
   render();
   document.body.append(bar);
   document.addEventListener("keydown", (e) => {
-    if (e.altKey && e.key.toLowerCase() === "p") bar.classList.toggle("min");
+    if (e.altKey && e.key.toLowerCase() === "p") toggleBar();
   });
   /* ---------- "Duplica scheda" nel menu ⋮ delle schede kanban ---------- */
   const DUP_MODELS = [TASK, "helpdesk.ticket"];
@@ -755,6 +781,7 @@
     link: "M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7 M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7",
     archive: "M3 4h18v4H3z M5 8v12h14V8 M10 12h4",
     pencil: "M17 3l4 4L8 20H4v-4L17 3z",
+    filter: "M3 4h18l-7 8v6l-4 2v-8L3 4z",
     hours: "M12 22a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 9v4l2 2 M10 2h4",
     palette: "M12 22a10 10 0 1 1 0-20c5.5 0 10 4 10 9 0 3-2.5 5-5 5h-2a2 2 0 0 0-1 3.7A2 2 0 0 1 12 22z M7.5 10.5h.01 M12 7.5h.01 M16.5 10.5h.01",
   };
@@ -1086,7 +1113,7 @@
       ["copy", "Copia scheda", () => { closeQE(); return duplicate(rec); }],
       ["link", "Copia link", copyLink],
       ["archive", "Archivia", archive],
-    ].filter(Boolean);
+    ].filter(Boolean).filter(([k]) => !qeHiddenFor(card).includes(k));
 
     for (const [ic, label, fn] of actions) {
       const b = el("button", { className: "qe-act" });
@@ -1198,7 +1225,7 @@
   const TINT_ALPHA = 0.2;         // intensità (0–1)
   const US_BADGE = true;          // mostra la US in alto
   const HIDE_ORIGINAL_US = true;  // nasconde la US nella posizione originale
-  const TAG_BADGES = true;        // mostra in alto anche le etichette, colorate
+  const TAG_BADGES = false;       // true = sposta in alto anche le altre etichette
   const TAG_FIELDS = ["tag_ids"]; // campi etichetta da spostare in alto
   const HIDE_ORIGINAL_TAGS = true;
   const US_RE = /^\s*US\s*-?\s*\d+(?:[.,]\d+)*\s*$/i;
@@ -1295,7 +1322,8 @@
 
   function decorate() {
     if (!getEnv()) return;
-    for (const [card, rec] of kanbanRecords()) {
+    const records = kanbanRecords();
+    for (const [card, rec] of records) {
       if (!DECO_MODELS.includes(rec.resModel)) continue;
 
       const c = rec.data?.color;
@@ -1341,6 +1369,7 @@
         }
       }
     }
+    decorateColumns(records);
   }
 
   function makeChip(l, rec) {
@@ -1638,6 +1667,7 @@
         el("label", {}, "Oscuramento", dimOut), dimIn,
         chk("Solo nelle viste kanban", bgCfg.kanbanOnly, (v) => { bgCfg.kanbanOnly = v; saveBg(); reapplyBg(); }),
         chk("Colonne semitrasparenti", bgCfg.glass, (v) => { bgCfg.glass = v; saveBg(); reapplyBg(); }),
+        ...lookControls(chk),
         el("p", { className: "hint", textContent: "L'immagine resta solo in questo browser: niente viene caricato su Odoo e i colleghi non la vedono." }),
         el("div", { className: "acts" },
             el("button", { textContent: "Rimuovi sfondo", onclick: () => run(setScope(null)) }),
@@ -1668,6 +1698,471 @@
       border:1px solid #4a5060;background-size:cover}
     #ps-panel .bg-tile span{padding:2px 6px;font-size:11px;color:#fff;text-shadow:0 1px 2px #000}
     #ps-panel .bg-tile:hover{outline:2px solid #017e84}
+  ` }));
+
+  /* ---------- Colonne: filtro, raggruppamento, colore intestazione, campi nascosti, azioni ---------- */
+  const COLS_KEY = "ps-cols-v1";
+  const QE_LABELS = {
+    open: "Apri scheda", hours: "Registra ore", tag: "Modifica etichette", user: "Modifica membri",
+    image: "Cambia copertina", clock: "Modifica le date", palette: "Colore scheda", move: "Sposta",
+    zap: "Sprint", copy: "Copia scheda", link: "Copia link", archive: "Archivia",
+  };
+  // "*" = tutte le colonne; le altre chiavi sono i nomi delle colonne in minuscolo
+  const COLS_DEFAULT = {
+    cols: {
+      "*": { qeHidden: ["hours"] },
+      backlog: { hide: ["project_id", "milestone_id"], qeHidden: [] },
+    },
+    look: { on: true, radius: 10, colRadius: 12, gap: 8, shadow: true },
+  };
+  let colCfg = (() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(COLS_KEY));
+      if (v && v.cols && v.look) return v;
+    } catch { /* default */ }
+    return structuredClone(COLS_DEFAULT);
+  })();
+  const saveCols = () => {
+    try { localStorage.setItem(COLS_KEY, JSON.stringify(colCfg)); }
+    catch (e) { alert("Salvataggio non riuscito: " + e.message); }
+  };
+  const colFilters = {};  // filtri attivi, per colonna (fino al ricaricamento della pagina)
+
+  const colName = (g) => (g && !g.classList.contains("o_column_folded")
+      ? g.querySelector(".o_column_title")?.textContent.trim() || null : null);
+  const colSettings = (name) => ({ ...(colCfg.cols["*"] || {}), ...((name && colCfg.cols[name.toLowerCase()]) || {}) });
+  const qeHiddenFor = (card) => colSettings(colName(card?.closest(".o_kanban_group"))).qeHidden || [];
+
+  const recText = (rec, k) => {
+    const v = rec.data?.[k];
+    if (typeof v === "string") return v.trim() || null;
+    if (Array.isArray(v) && typeof v[1] === "string") return v[1];
+    if (v && typeof v.display_name === "string") return v.display_name;
+    return null;
+  };
+  const tagNames = (rec) => TAG_FIELDS.flatMap((f) =>
+      (rec.data?.[f]?.records || []).map((r) => String(r.data?.display_name || r.data?.name || "").trim()).filter(Boolean));
+  const natCmp = (a, b) => {
+    const x = (a.match(/\d+/g) || []).map(Number), y = (b.match(/\d+/g) || []).map(Number);
+    for (let i = 0; i < Math.max(x.length, y.length); i++) {
+      const d = (x[i] ?? -1) - (y[i] ?? -1);
+      if (d) return d;
+    }
+    return a.localeCompare(b);
+  };
+  const colorHex = (c) => (typeof c === "number" ? PALETTE[c]?.[0] : typeof c === "string" ? c : null);
+  const darkText = (hex) => {
+    const n = parseInt(hex.slice(1), 16);
+    return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) > 150;
+  };
+
+  // nasconde l'elemento più esterno che contiene esattamente quel testo (icona compresa)
+  function hideText(card, value) {
+    for (const e of card.querySelectorAll("*")) {
+      if (e.closest(".ps-labels, .ps-colbtn")) continue;
+      if (e.textContent.trim() !== value || e.parentElement?.textContent.trim() === value) continue;
+      e.dataset.psColhide = "1";
+    }
+  }
+  // filtro = { us: chiave US | "__none" | null, tag: nome etichetta | null }, in AND
+  const usOk = (rec, f) => {
+    if (!f?.us) return true;
+    const v = usValue(rec);
+    return f.us === "__none" ? !v : !!v && usKey(v) === f.us;
+  };
+  const tagOk = (rec, f) => !f?.tag || tagNames(rec).includes(f.tag);
+  const matchFilter = (rec, f) => usOk(rec, f) && tagOk(rec, f);
+  const colCollapsed = {};  // gruppi US chiusi, per colonna
+
+  // fascia delle intestazioni: estende il colore anche negli spazi tra le colonne
+  function measureHeadExt() {
+    const gs = [...document.querySelectorAll(".o_kanban_view .o_kanban_group:not(.o_column_folded)")];
+    const h = gs[0]?.querySelector(":scope > .o_kanban_header");
+    if (!h) return;
+    const gr = gs[0].getBoundingClientRect(), hr = h.getBoundingClientRect();
+    const gap = gs[1] ? Math.max(0, gs[1].getBoundingClientRect().left - gr.right) : 0;
+    const ext = `${Math.max(0, Math.ceil(gap / 2 + (hr.left - gr.left))) + 1}px`;
+    const root = document.documentElement;
+    if (root.style.getPropertyValue("--ps-head-ext") !== ext) root.style.setProperty("--ps-head-ext", ext);
+  }
+
+  function decorateColumns(records) {
+    if (document.documentElement.dataset.psHeadall) measureHeadExt();
+    const byGroup = new Map();
+    for (const [card, rec] of records) {
+      const g = card.closest(".o_kanban_group");
+      if (!g || !DECO_MODELS.includes(rec.resModel)) continue;
+      if (!byGroup.has(g)) byGroup.set(g, []);
+      byGroup.get(g).push([card, rec]);
+    }
+    for (const g of document.querySelectorAll(".o_kanban_group")) {
+      const name = colName(g);
+      if (!name) continue;
+      const lname = name.toLowerCase(), cfg = colSettings(name), recs = byGroup.get(g) || [];
+      if (!recs.length && !g.querySelector(".o_kanban_record") && !byGroup.size) continue;
+
+
+      ensureColBtn(g, name, !!colFilters[lname] || !!cfg.groupUs);
+
+      // campi nascosti + filtro
+      const flt = colFilters[lname];
+      for (const [card, rec] of recs) {
+        for (const e of card.querySelectorAll("[data-ps-colhide]")) delete e.dataset.psColhide;
+        for (const f of cfg.hide || []) { const t = recText(rec, f); if (t) hideText(card, t); }
+        const show = !flt || matchFilter(rec, flt);
+        if (show) { if (card.dataset.psFiltered) delete card.dataset.psFiltered; }
+        else if (!card.dataset.psFiltered) card.dataset.psFiltered = "1";
+      }
+
+      // raggruppa per US: intestazioni di gruppo colorate e richiudibili
+      if (cfg.groupUs) {
+        if (!g.dataset.psSort) g.dataset.psSort = "1";
+        const groups = new Map();
+        const none = { label: "Senza US", cards: [] };
+        for (const [card, rec] of recs) {
+          const v = usValue(rec);
+          if (!v) { none.cards.push(card); continue; }
+          const k = usKey(v);
+          if (!groups.has(k)) groups.set(k, { label: v, cards: [] });
+          groups.get(k).cards.push(card);
+        }
+        const list = [...groups].sort((a, b) => natCmp(a[0], b[0]));
+        if (none.cards.length && list.length) list.push(["__none", none]);
+        const closed = colCollapsed[lname] || (colCollapsed[lname] = new Set());
+        const seen = new Set();
+        list.forEach(([k, gr], i) => {
+          seen.add(k);
+          let sep = [...g.querySelectorAll(":scope > .ps-usgroup")].find((x) => x.dataset.key === k);
+          if (!sep) {
+            sep = el("button", { type: "button", className: "ps-usgroup" });
+            sep.dataset.key = k;
+            sep.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const set = colCollapsed[lname] || (colCollapsed[lname] = new Set());
+              if (set.has(k)) set.delete(k); else set.add(k);
+              decorate();
+            });
+            for (const ev of ["mousedown", "pointerdown"]) sep.addEventListener(ev, (e) => e.stopPropagation());
+            g.append(sep);
+          }
+          const visible = gr.cards.filter((c) => !c.dataset.psFiltered).length;
+          const isClosed = closed.has(k);
+          const ci = k === "__none" ? null : usColor(k);
+          const hex = ci ? PALETTE[ci][0] : "#8d90a0";
+          const fg = !ci || PALETTE[ci][2] ? "#1d2029" : "#fff";
+          const sig = JSON.stringify([gr.label, visible, gr.cards.length, isClosed, hex]);
+          if (sep.dataset.sig !== sig) {
+            sep.dataset.sig = sig;
+            sep.style.setProperty("--ps-us-c", hex);
+            sep.style.setProperty("--ps-us-fg", fg);
+            sep.setAttribute("aria-expanded", String(!isClosed));
+            sep.title = isClosed ? "Clic per mostrare le schede" : "Clic per nascondere le schede";
+            sep.replaceChildren(
+                el("span", { className: "chev", textContent: isClosed ? "▸" : "▾" }),
+                el("span", { className: "name", textContent: gr.label }),
+                el("span", { className: "count", textContent: visible === gr.cards.length ? String(visible) : `${visible}/${gr.cards.length}` }));
+          }
+          const so = String(i * 2 + 1), co = String(i * 2 + 2);
+          if (sep.style.order !== so) sep.style.order = so;
+          sep.hidden = visible === 0;
+          for (const c of gr.cards) {
+            if (c.style.order !== co) c.style.order = co;
+            if (isClosed) { if (!c.dataset.psCollapsed) c.dataset.psCollapsed = "1"; }
+            else if (c.dataset.psCollapsed) delete c.dataset.psCollapsed;
+          }
+        });
+        if (!list.length) for (const [card] of recs) card.style.removeProperty("order");
+        for (const sep of g.querySelectorAll(":scope > .ps-usgroup")) if (!seen.has(sep.dataset.key)) sep.remove();
+      } else if (g.dataset.psSort) {
+        delete g.dataset.psSort;
+        for (const [card] of recs) { card.style.removeProperty("order"); delete card.dataset.psCollapsed; }
+        for (const sep of g.querySelectorAll(":scope > .ps-usgroup")) sep.remove();
+      }
+    }
+  }
+
+  function ensureColBtn(g, name, active) {
+    const head = g.querySelector(".o_kanban_header_title") || g.querySelector(".o_kanban_header");
+    if (!head) return;
+    let b = head.querySelector(".ps-colbtn");
+    if (!b) {
+      b = el("button", { type: "button", className: "ps-colbtn" });
+      b.innerHTML = svg("filter");
+      b.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); openColPop(g, b); });
+      for (const ev of ["mousedown", "pointerdown"]) b.addEventListener(ev, (e) => e.stopPropagation());
+      const cfgBtn = head.querySelector(".o_kanban_config");
+      if (cfgBtn) cfgBtn.parentElement.insertBefore(b, cfgBtn); else head.append(b);
+    }
+    b.classList.toggle("on", active);
+    const t = active ? `Colonna "${name}": filtro o raggruppamento attivo` : `Personalizza la colonna "${name}"`;
+    if (b.title !== t) b.title = t;
+  }
+
+  /* popover della colonna */
+  let colPop = null;
+  const colPopOutside = (e) => { if (colPop && !colPop.contains(e.target) && !e.target.closest?.(".ps-colbtn")) closeColPop(); };
+  const colPopKey = (e) => { if (e.key === "Escape") closeColPop(); };
+  function closeColPop() {
+    if (!colPop) return;
+    colPop.remove();
+    colPop = null;
+    document.removeEventListener("mousedown", colPopOutside, true);
+    document.removeEventListener("keydown", colPopKey, true);
+  }
+
+  function openColPop(g, btn) {
+    const name = colName(g);
+    if (!name) return;
+    if (colPop?.dataset.col === name) return closeColPop();
+    closeColPop();
+    const lname = name.toLowerCase();
+    let scope = lname;
+    colPop = el("div", { id: "ps-colpop" });
+    colPop.dataset.col = name;
+
+    const chk = (text, checked, onchange) => {
+      const i = el("input", { type: "checkbox", checked, onchange: () => onchange(i.checked) });
+      return el("label", { className: "chk" }, i, text);
+    };
+
+    function draw() {
+      const recs = kanbanRecords().filter(([c, r]) => c.closest(".o_kanban_group") === g && DECO_MODELS.includes(r.resModel));
+      const cur = scope === "*" ? (colCfg.cols["*"] || {}) : colSettings(name);
+      const edit = (fn) => {
+        if (scope !== "*" && !colCfg.cols[scope]) colCfg.cols[scope] = structuredClone(colSettings(name));
+        fn(colCfg.cols[scope] || (colCfg.cols[scope] = {}));
+        saveCols();
+        decorate();
+        draw();
+      };
+
+      /* filtro: US ed etichetta insieme (solo questa colonna, temporaneo) */
+      const fl = colFilters[lname] || {};
+      const usCount = new Map(), tagCount = new Map();
+      let noUs = 0, usTot = 0, tagTot = 0;
+      for (const [, r] of recs) {
+        if (tagOk(r, fl)) {
+          usTot++;
+          const v = usValue(r);
+          if (v) { const k = usKey(v); usCount.set(k, [v, (usCount.get(k)?.[1] || 0) + 1]); } else noUs++;
+        }
+        if (usOk(r, fl)) {
+          tagTot++;
+          for (const t of tagNames(r)) tagCount.set(t, (tagCount.get(t) || 0) + 1);
+        }
+      }
+      if (fl.us && fl.us !== "__none" && !usCount.has(fl.us)) usCount.set(fl.us, [fl.us, 0]);
+      if (fl.tag && !tagCount.has(fl.tag)) tagCount.set(fl.tag, 0);
+      const setFilter = (patch) => {
+        const nf = { ...(colFilters[lname] || {}), ...patch };
+        if (!nf.us && !nf.tag) delete colFilters[lname]; else colFilters[lname] = nf;
+        decorate();
+        draw();
+      };
+      const usSel = el("select", { title: "User story" },
+          el("option", { value: "", textContent: `Tutte le US (${usTot})` }),
+          ...[...usCount].sort((a, b) => natCmp(a[0], b[0])).map(([k, [v, n]]) =>
+              el("option", { value: k, textContent: `${v} (${n})` })),
+          noUs || fl.us === "__none" ? el("option", { value: "__none", textContent: `Senza US (${noUs})` }) : null);
+      usSel.value = fl.us || "";
+      usSel.onchange = () => setFilter({ us: usSel.value || null });
+      const tagSel = el("select", { title: "Etichetta" },
+          el("option", { value: "", textContent: `Tutte le etichette (${tagTot})` }),
+          ...[...tagCount].sort((a, b) => a[0].localeCompare(b[0])).map(([t, n]) =>
+              el("option", { value: t, textContent: `${t} (${n})` })));
+      tagSel.value = fl.tag || "";
+      tagSel.onchange = () => setFilter({ tag: tagSel.value || null });
+      const shown = recs.filter(([, r]) => matchFilter(r, fl)).length;
+
+      /* colore della fascia intestazioni (vale per tutte le colonne) */
+      const look = colCfg.look;
+      const setHead = (v) => { look.header = v; saveCols(); applyLook(); decorate(); draw(); };
+      const curHex = colorHex(look.header);
+      const sw = el("div", { className: "sw" },
+          el("button", { type: "button", className: look.header == null ? "on none" : "none", title: "Nessun colore", textContent: "∅",
+            onclick: () => setHead(null) }),
+          ...PALETTE.slice(1).map(([hx, nm], i) => {
+            const b = el("button", { type: "button", title: nm, className: look.header === i + 1 ? "on" : "",
+              onclick: () => setHead(i + 1) });
+            b.style.background = hx;
+            return b;
+          }));
+      const custom = el("input", { type: "color", value: curHex || "#714b67", title: "Colore personalizzato" });
+      custom.onchange = () => setHead(custom.value);
+
+      /* campi nascosti: campi testo/relazione presenti nelle schede di questa colonna */
+      const cand = new Map();
+      for (const [, r] of recs) {
+        for (const k of Object.keys(r.data || {})) {
+          if (k === "name" || k === usField || !["many2one", "char"].includes(r.fields?.[k]?.type)) continue;
+          if (recText(r, k)) cand.set(k, r.fields[k].string || k);
+        }
+      }
+      for (const k of cur.hide || []) if (!cand.has(k)) cand.set(k, k);
+      const hideList = [...cand].sort((a, b) => a[1].localeCompare(b[1])).map(([k, label]) =>
+          chk(label, (cur.hide || []).includes(k), (v) => edit((c) => {
+            const set = new Set(c.hide || []);
+            if (v) set.add(k); else set.delete(k);
+            c.hide = [...set];
+          })));
+
+      /* azioni della modifica rapida */
+      const qeList = Object.entries(QE_LABELS).map(([k, label]) =>
+          chk(label, !(cur.qeHidden || []).includes(k), (v) => edit((c) => {
+            const set = new Set(c.qeHidden || []);
+            if (v) set.delete(k); else set.add(k);
+            c.qeHidden = [...set];
+          })));
+
+      const scopeSel = el("select", {},
+          el("option", { value: lname, textContent: `Solo la colonna "${name}"` }),
+          el("option", { value: "*", textContent: "Tutte le colonne (predefinito)" }));
+      scopeSel.value = scope;
+      scopeSel.onchange = () => { scope = scopeSel.value; draw(); };
+
+      colPop.replaceChildren(
+          el("h4", { textContent: name }),
+          el("label", { className: "lbl", textContent: "Filtra le schede (temporaneo)" }),
+          el("div", { className: "fl" }, usSel, tagSel),
+          el("p", { className: "hint", textContent: colFilters[lname]
+                ? `Visibili ${shown} di ${recs.length} schede.` : "Puoi combinare user story ed etichetta." }),
+          colFilters[lname] ? el("div", { className: "acts tight" }, el("button", { type: "button", textContent: "Azzera filtri",
+            onclick: () => { delete colFilters[lname]; decorate(); draw(); } })) : null,
+          el("h4", { className: "sep", textContent: "Impostazioni" }),
+          scopeSel,
+          chk("Raggruppa per user story", !!cur.groupUs, (v) => edit((c) => { c.groupUs = v; })),
+          el("label", { className: "lbl", textContent: "Colore intestazioni (fascia su tutte le colonne)" }),
+          el("div", { className: "inline" }, sw, custom),
+          el("label", { className: "lbl", textContent: "Nascondi nelle schede" }),
+          hideList.length ? el("div", { className: "list" }, ...hideList)
+              : el("p", { className: "hint", textContent: "Nessun campo testuale da nascondere in questa colonna." }),
+          el("label", { className: "lbl", textContent: "Azioni della modifica rapida" }),
+          el("div", { className: "list two" }, ...qeList),
+          el("div", { className: "acts" },
+              scope !== "*" && colCfg.cols[scope]
+                  ? el("button", { type: "button", textContent: "Usa impostazioni generali",
+                    onclick: () => { delete colCfg.cols[scope]; saveCols(); decorate(); draw(); } })
+                  : null,
+              el("button", { type: "button", textContent: "Chiudi", onclick: closeColPop })));
+    }
+
+    document.body.append(colPop);
+    draw();
+    const r = btn.getBoundingClientRect();
+    colPop.style.left = Math.max(8, Math.min(r.left - 20, innerWidth - colPop.offsetWidth - 8)) + "px";
+    colPop.style.top = Math.max(8, Math.min(r.bottom + 6, innerHeight - colPop.offsetHeight - 8)) + "px";
+    setTimeout(() => {
+      document.addEventListener("mousedown", colPopOutside, true);
+      document.addEventListener("keydown", colPopKey, true);
+    });
+  }
+
+  /* aspetto: angoli arrotondati, spazio, ombra (regolabili dal pannello Sfondo) */
+  function applyLook() {
+    const l = colCfg.look, root = document.documentElement;
+    root.dataset.psHeaders = "1";
+    const hh = colorHex(l.header);
+    if (hh) {
+      root.style.setProperty("--ps-head", hh);
+      root.style.setProperty("--ps-head-fg", darkText(hh) ? "#1d2029" : "#fff");
+      root.dataset.psHeadall = "1";
+      measureHeadExt();
+    } else if (root.dataset.psHeadall) {
+      delete root.dataset.psHeadall;
+      root.style.removeProperty("--ps-head");
+      root.style.removeProperty("--ps-head-fg");
+    }
+    if (!l.on) { delete root.dataset.psLook; delete root.dataset.psShadow; return; }
+    root.dataset.psLook = "1";
+    root.style.setProperty("--ps-radius", `${l.radius}px`);
+    root.style.setProperty("--ps-col-radius", `${l.colRadius}px`);
+    root.style.setProperty("--ps-gap", `${l.gap}px`);
+    if (l.shadow) root.dataset.psShadow = "1"; else delete root.dataset.psShadow;
+  }
+  function lookControls(chk) {
+    const l = colCfg.look;
+    const upd = () => { saveCols(); applyLook(); };
+    const rng = (label, key, max) => {
+      const out = el("span", { className: "hint", textContent: ` ${l[key]} px` });
+      const i = el("input", { type: "range", min: "0", max: String(max), step: "1", value: String(l[key]) });
+      i.oninput = () => { l[key] = Number(i.value); out.textContent = ` ${i.value} px`; upd(); };
+      return [el("label", {}, label, out), i];
+    };
+    return [
+      el("h4", { className: "sep", textContent: "Schede e colonne" }),
+      chk("Stile arrotondato (tipo Trello)", l.on, (v) => { l.on = v; upd(); }),
+      ...rng("Angoli delle schede", "radius", 20),
+      ...rng("Angoli delle colonne", "colRadius", 24),
+      ...rng("Spazio tra le schede", "gap", 20),
+      chk("Ombra sotto le schede", l.shadow, (v) => { l.shadow = v; upd(); }),
+    ];
+  }
+  applyLook();
+  scheduleDecorate();
+
+  document.head.append(el("style", { textContent: `
+    .o_kanban_record[data-ps-filtered]{display:none!important}
+    [data-ps-colhide]{display:none!important}
+    .o_kanban_group[data-ps-sort]{display:flex!important;flex-direction:column}
+    .o_kanban_group[data-ps-sort]>*{order:100000}
+    .o_kanban_group[data-ps-sort]>.o_kanban_header{order:-3}
+    .o_kanban_group[data-ps-sort]>.o_kanban_quick_create{order:-2}
+    .o_kanban_record[data-ps-collapsed]{display:none!important}
+    .o_kanban_group>.ps-usgroup{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;margin:12px 0 6px;
+      padding:6px 8px;border:0;border-left:4px solid var(--ps-us-c);border-radius:6px;background:rgba(127,127,127,.14);
+      color:inherit;font:600 12.5px/1.3 system-ui,sans-serif;text-align:left;cursor:pointer}
+    .o_kanban_group>.ps-usgroup[hidden]{display:none!important}
+    .o_kanban_group>.ps-usgroup:hover{background:rgba(127,127,127,.24)}
+    .o_kanban_group>.ps-usgroup:focus-visible{outline:2px solid #017e84;outline-offset:1px}
+    .ps-usgroup .chev{width:10px;opacity:.75}
+    .ps-usgroup .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .ps-usgroup .count{flex:none;min-width:18px;padding:1px 7px;border-radius:9px;background:var(--ps-us-c);
+      color:var(--ps-us-fg);font-size:11px;text-align:center}
+    html[data-ps-headers][data-ps-headall] .o_action_manager .o_kanban_view .o_kanban_group>.o_kanban_header{
+      background:var(--ps-head)!important;border-radius:0!important;margin-bottom:8px;
+      box-shadow:calc(var(--ps-head-ext,8px) * -1) 0 0 var(--ps-head),var(--ps-head-ext,8px) 0 0 var(--ps-head)!important}
+    html[data-ps-headall] .o_kanban_group>.o_kanban_header :is(.o_column_title,.o_kanban_counter,.o_kanban_counter_side,
+      .ps-colbtn,.o_kanban_config,.o_kanban_header_title,.o_kanban_quick_add,i,.fa){color:var(--ps-head-fg)!important}
+    html[data-ps-look] .o_kanban_view .o_kanban_record{border-radius:var(--ps-radius)!important;margin-bottom:var(--ps-gap)!important}
+    html[data-ps-look] .o_kanban_view .o_kanban_group{border-radius:var(--ps-col-radius)!important}
+    html[data-ps-look][data-ps-shadow] .o_kanban_view .o_kanban_record{box-shadow:0 1px 2px #0007,0 0 0 1px #0002!important}
+    html[data-ps-look] .ps-us{border-radius:max(3px,calc(var(--ps-radius) * .45))}
+
+    .ps-colbtn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin:0 2px;
+      padding:0;border:0;border-radius:5px;background:transparent;color:inherit;opacity:.55;cursor:pointer;flex:none}
+    .ps-colbtn:hover,.ps-colbtn.on{opacity:1}
+    .ps-colbtn.on{background:#714b67;color:#fff!important}
+    .ps-colbtn svg{width:14px;height:14px}
+    .ps-colbtn:focus-visible{outline:2px solid #017e84;opacity:1}
+
+    #ps-colpop{position:fixed;z-index:10001;width:340px;max-width:calc(100vw - 16px);max-height:80vh;overflow-x:hidden;
+      overflow-y:auto;box-sizing:border-box;padding:12px;border-radius:10px;background:#262a36;color:#e6e6ea;
+      box-shadow:0 4px 18px #000a;font:13px/1.4 system-ui,sans-serif;color-scheme:dark}
+    #ps-colpop h4{margin:0 0 6px;font-size:14px;font-weight:600;color:#fff}
+    #ps-colpop h4.sep{margin-top:14px;padding-top:10px;border-top:1px solid #3a3f4d}
+    #ps-colpop .lbl{display:block;margin:10px 0 4px;color:#b8bac4}
+    #ps-colpop select{width:100%;box-sizing:border-box;padding:6px;border-radius:6px;border:1px solid #4a5060;
+      background:#1d2029;color:#e6e6ea;font:inherit}
+    #ps-colpop label.chk{display:flex;align-items:center;gap:8px;margin:2px 0;padding:3px 4px;border-radius:4px;cursor:pointer}
+    #ps-colpop label.chk:hover{background:#3a3f4d}
+    #ps-colpop label.chk input{margin:0}
+    #ps-colpop .list.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:6px}
+    #ps-colpop .inline{display:flex;align-items:flex-start;gap:8px}
+    #ps-colpop .sw{display:grid;grid-template-columns:repeat(6,24px);gap:5px}
+    #ps-colpop .sw button{width:24px;height:24px;padding:0;border:0;border-radius:5px;cursor:pointer}
+    #ps-colpop .sw button.on{outline:2px solid #fff;outline-offset:1px}
+    #ps-colpop .sw button.none{background:transparent;border:1px dashed #8d90a0;color:#b8bac4}
+    #ps-colpop input[type=color]{width:40px;height:53px;padding:2px;border:1px solid #4a5060;border-radius:6px;
+      background:#1d2029;cursor:pointer}
+    #ps-colpop .hint{margin:4px 0 0;color:#8d90a0;font-size:12px}
+    #ps-colpop .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+    #ps-colpop .acts.tight{margin-top:6px}
+    #ps-colpop .fl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
+    #ps-colpop .acts button{border:0;border-radius:6px;padding:7px 12px;background:#3a3f4d;color:#e6e6ea;
+      font:inherit;cursor:pointer;white-space:nowrap}
+    #ps-colpop .acts button:hover{background:#4a5060}
+    #ps-colpop :focus-visible{outline:2px solid #017e84;outline-offset:1px}
   ` }));
 
   console.log("[pulsantiera] caricata", location.href);
