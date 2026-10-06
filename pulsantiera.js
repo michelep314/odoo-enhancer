@@ -754,6 +754,7 @@
     archive: "M3 4h18v4H3z M5 8v12h14V8 M10 12h4",
     pencil: "M17 3l4 4L8 20H4v-4L17 3z",
     hours: "M12 22a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 9v4l2 2 M10 2h4",
+    palette: "M12 22a10 10 0 1 1 0-20c5.5 0 10 4 10 9 0 3-2.5 5-5 5h-2a2 2 0 0 0-1 3.7A2 2 0 0 1 12 22z M7.5 10.5h.01 M12 7.5h.01 M16.5 10.5h.01",
   };
   const svg = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${QE_ICONS[k]}"/></svg>`;
 
@@ -789,7 +790,7 @@
     const has = (f) => !!fields[f];
     const DATE_FIELDS = ["planned_date_begin", "date_deadline"].filter(has);
     const readFields = ["name", "tag_ids", "user_ids", "stage_id", "project_id", "displayed_image_id",
-      ...DATE_FIELDS, SPRINT_FIELD, "effective_hours", "allocated_hours"].filter(has);
+      ...DATE_FIELDS, SPRINT_FIELD, "effective_hours", "allocated_hours", "color"].filter(has);
 
     let data;
     const reload = async () => { [data] = await orm.read(TASK, [id], readFields); };
@@ -1040,6 +1041,19 @@
       ];
     };
 
+    const colorPop = async () => [
+      el("h4", { textContent: "Colore scheda" }),
+      el("div", { className: "qe-sw" }, ...PALETTE.map((p, i) => {
+        const b = el("button", {
+          title: i ? p[1] : "Nessun colore", textContent: i ? "" : "∅",
+          className: (data.color || 0) === i ? "on" : "",
+          onclick: () => done(write({ color: i }, "Colore aggiornato.")),
+        });
+        if (i) b.style.background = p[0];
+        return b;
+      })),
+    ];
+
     const copyLink = async () => {
       const url = `${location.origin}/web#id=${id}&model=${TASK}&view_type=form`;
       try { await navigator.clipboard.writeText(url); notification.add("Link copiato.", { type: "info" }); }
@@ -1064,6 +1078,7 @@
       ["user", "Modifica membri", (b) => showPop(b, membersPop)],
       ["image", "Cambia copertina", (b) => showPop(b, coverPop)],
       DATE_FIELDS.length ? ["clock", "Modifica le date", (b) => showPop(b, datesPop)] : null,
+      has("color") ? ["palette", "Colore scheda", (b) => showPop(b, colorPop)] : null,
       ["move", "Sposta", (b) => showPop(b, movePop)],
       has(SPRINT_FIELD) ? ["zap", "Sprint", (b) => showPop(b, sprintPop)] : null,
       ["copy", "Copia scheda", () => { closeQE(); return duplicate(rec); }],
@@ -1173,6 +1188,215 @@
     #ps-qe-pencil{position:fixed;z-index:9998;display:flex;align-items:center;justify-content:center;
       width:28px;height:28px;padding:0;border:0;border-radius:6px;background:#3a3f4dee;color:#e6e6ea;cursor:pointer}
     #ps-qe-pencil:hover{background:#714b67;color:#fff}
+  ` }));
+
+  /* ---------- Schede: etichetta US in alto colorata + colore Odoo su tutta la scheda ---------- */
+  const DECO_MODELS = [TASK];
+  const TINT_CARDS = true;        // colora tutta la scheda con il colore impostato in Odoo
+  const TINT_ALPHA = 0.2;         // intensità (0–1)
+  const US_BADGE = true;          // mostra la US in alto
+  const HIDE_ORIGINAL_US = true;  // nasconde la US nella posizione originale
+  const US_RE = /^\s*US\s*-?\s*\d+(?:[.,]\d+)*\s*$/i;
+  const US_KEY = "ps-us-colors-v1";
+  // Tavolozza di Odoo 17: indice = valore del campo color. [esadecimale, nome, testo scuro]
+  const PALETTE = [null,
+    ["#F06050", "Rosso", false], ["#F4A460", "Arancione", true], ["#F7CD1F", "Giallo", true],
+    ["#6CC1ED", "Celeste", true], ["#814968", "Viola scuro", false], ["#EB7E7F", "Salmone", true],
+    ["#2C8397", "Verde acqua", false], ["#475577", "Blu scuro", false], ["#D6145F", "Fucsia", false],
+    ["#30C381", "Verde", true], ["#9365B8", "Viola", false]];
+
+  const rgba = (hex, a) => {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  };
+  let usColors = (() => {
+    try { const v = JSON.parse(localStorage.getItem(US_KEY)); return v && typeof v === "object" ? v : {}; }
+    catch { return {}; }
+  })();
+  const saveUsColors = () => {
+    try { localStorage.setItem(US_KEY, JSON.stringify(usColors)); }
+    catch (e) { alert("Salvataggio non riuscito: " + e.message); }
+  };
+  const usKey = (v) => v.toUpperCase().replace(/\s+/g, "").replace(",", ".");
+  const usColor = (key) => {
+    if (usColors[key]) return usColors[key];
+    let h = 0;
+    for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return (h % 11) + 1;  // colore automatico, stabile per la stessa US
+  };
+
+  // Tutte le schede kanban visibili con il loro record (un solo giro dell'albero Owl)
+  function kanbanRecords() {
+    const root = getEnv() && odoo.__WOWL_DEBUG__.root.__owl__;
+    const out = [];
+    const stack = root ? [root] : [];
+    while (stack.length) {
+      const n = stack.pop();
+      const c = n.component, rec = c?.props?.record, node = c?.rootRef?.el;
+      if (rec?.resId && node?.classList?.contains("o_kanban_record")) out.push([node, rec]);
+      stack.push(...Object.values(n.children || {}));
+    }
+    return out;
+  }
+
+  // Trova la US: prima in un campo testo/relazione della scheda, poi tra le etichette
+  let usField = null;
+  function usValue(rec) {
+    const d = rec.data || {}, f = rec.fields || {};
+    const text = (k) => {
+      const v = d[k];
+      if (typeof v === "string") return v;
+      if (Array.isArray(v) && typeof v[1] === "string") return v[1];
+      if (v && typeof v.display_name === "string") return v.display_name;
+      return null;
+    };
+    if (usField) { const t = text(usField); if (t && US_RE.test(t)) return t.trim(); }
+    for (const k of Object.keys(d)) {
+      if (!["char", "many2one", "selection"].includes(f[k]?.type)) continue;
+      const t = text(k);
+      if (t && US_RE.test(t)) {
+        if (usField !== k) console.log("[pulsantiera] US letta dal campo", k);
+        usField = k;
+        return t.trim();
+      }
+    }
+    for (const k of Object.keys(d)) {
+      if (f[k]?.type !== "many2many") continue;
+      for (const r of d[k]?.records || []) {
+        const t = r.data?.display_name || r.data?.name;
+        if (typeof t === "string" && US_RE.test(t)) return t.trim();
+      }
+    }
+    return null;
+  }
+
+  function hideOriginal(card, value) {
+    const hits = [...card.querySelectorAll("span, div, a, li")].filter((e) =>
+        !e.closest(".ps-us") && e.children.length === 0 && e.textContent.trim() === value);
+    if (hits.length !== 1) return;
+    const t = hits[0].closest(".o_field_widget") || hits[0];
+    if (t !== card && !t.dataset.psHidden) t.dataset.psHidden = "1";
+  }
+
+  function badgeContainer(card) {
+    const cs = getComputedStyle(card);
+    if (cs.display.includes("flex") && cs.flexDirection.startsWith("row"))
+      return card.querySelector(".oe_kanban_content, .oe_kanban_details") || card;
+    return card;
+  }
+
+  function decorate() {
+    if (!getEnv()) return;
+    for (const [card, rec] of kanbanRecords()) {
+      if (!DECO_MODELS.includes(rec.resModel)) continue;
+
+      const c = rec.data?.color;
+      const tint = TINT_CARDS && Number.isInteger(c) && PALETTE[c] ? rgba(PALETTE[c][0], TINT_ALPHA) : null;
+      if (tint) {
+        if (card.style.getPropertyValue("--ps-tint") !== tint) card.style.setProperty("--ps-tint", tint);
+        if (!card.dataset.psTint) card.dataset.psTint = "1";
+      } else if (card.dataset.psTint) {
+        delete card.dataset.psTint;
+        card.style.removeProperty("--ps-tint");
+      }
+
+      const v = US_BADGE ? usValue(rec) : null;
+      let badge = card.querySelector(".ps-us");
+      if (!v) { badge?.remove(); continue; }
+      const key = usKey(v), ci = usColor(key);
+      if (!badge) {
+        badge = el("button", { type: "button", className: "ps-us", title: "Clic per cambiare il colore di questa US" });
+        badge.addEventListener("click", onUsClick);
+        for (const ev of ["mousedown", "pointerdown"]) badge.addEventListener(ev, (e) => e.stopPropagation());
+        badgeContainer(card).prepend(badge);
+      }
+      if (badge.textContent !== v) badge.textContent = v;
+      if (badge.dataset.key !== key) badge.dataset.key = key;
+      if (badge.dataset.ci !== String(ci)) {
+        badge.dataset.ci = String(ci);
+        badge.style.background = PALETTE[ci][0];
+        badge.style.color = PALETTE[ci][2] ? "#1d2029" : "#fff";
+      }
+      if (HIDE_ORIGINAL_US) hideOriginal(card, v);
+    }
+  }
+
+  /* selettore colore della US */
+  let picker = null;
+  const pickerOutside = (e) => { if (picker && !picker.contains(e.target)) closePicker(); };
+  const pickerKey = (e) => { if (e.key === "Escape") closePicker(); };
+  function closePicker() {
+    if (!picker) return;
+    picker.remove();
+    picker = null;
+    document.removeEventListener("mousedown", pickerOutside, true);
+    document.removeEventListener("keydown", pickerKey, true);
+  }
+  function setUsColor(key, ci) {
+    if (ci == null) delete usColors[key]; else usColors[key] = ci;
+    saveUsColors();
+    closePicker();
+    decorate();
+  }
+  function onUsClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const b = e.currentTarget, key = b.dataset.key;
+    closePicker();
+    picker = el("div", { id: "ps-us-picker" },
+        el("div", { className: "t", textContent: `Colore per ${b.textContent}` }),
+        el("div", { className: "sw" }, ...PALETTE.slice(1).map(([hex, name], i) => {
+          const s = el("button", { type: "button", title: name, className: usColor(key) === i + 1 ? "on" : "",
+            onclick: () => setUsColor(key, i + 1) });
+          s.style.background = hex;
+          return s;
+        })),
+        el("button", { type: "button", className: "auto", textContent: "Automatico", onclick: () => setUsColor(key, null) }));
+    document.body.append(picker);
+    const r = b.getBoundingClientRect();
+    picker.style.left = Math.max(8, Math.min(r.left, innerWidth - picker.offsetWidth - 8)) + "px";
+    picker.style.top = (r.bottom + 6 + picker.offsetHeight > innerHeight ? r.top - picker.offsetHeight - 6 : r.bottom + 6) + "px";
+    setTimeout(() => {
+      document.addEventListener("mousedown", pickerOutside, true);
+      document.addEventListener("keydown", pickerKey, true);
+    });
+  }
+
+  let decoTimer = null;
+  const scheduleDecorate = () => {
+    clearTimeout(decoTimer);
+    decoTimer = setTimeout(() => {
+      try { decorate(); } catch (e) { console.warn("[pulsantiera] decorazione schede:", e); }
+    }, 120);
+  };
+  new MutationObserver((muts) => {
+    for (const m of muts) {
+      if (m.target.closest?.(".o_kanban_renderer") ||
+          [...m.addedNodes].some((n) => n.nodeType === 1 && (n.matches(".o_kanban_renderer, .o_kanban_record") || n.querySelector(".o_kanban_record")))) {
+        return scheduleDecorate();
+      }
+    }
+  }).observe(document.body, { childList: true, subtree: true });
+  scheduleDecorate();
+
+  document.head.append(el("style", { textContent: `
+    .o_kanban_record[data-ps-tint]{background-image:linear-gradient(var(--ps-tint),var(--ps-tint))!important}
+    [data-ps-hidden]{display:none!important}
+    .ps-us{display:block;flex:0 0 auto;align-self:flex-start;width:max-content;max-width:100%;margin:0 0 6px;
+      padding:2px 8px;border:0;border-radius:4px;font:600 12px/1.5 system-ui,sans-serif;letter-spacing:.01em;
+      cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .ps-us:hover{filter:brightness(1.1)}
+    .ps-us:focus-visible{outline:2px solid #017e84;outline-offset:1px}
+    #ps-us-picker{position:fixed;z-index:10001;padding:10px;border-radius:8px;background:#262a36;
+      box-shadow:0 4px 16px #000a;color:#e6e6ea;font:13px/1.4 system-ui,sans-serif}
+    #ps-us-picker .t{margin-bottom:8px;font-weight:600}
+    #ps-us-picker .sw,#ps-qe .qe-sw{display:grid;grid-template-columns:repeat(6,28px);gap:6px}
+    #ps-us-picker .sw button,#ps-qe .qe-sw button{width:28px;height:28px;padding:0;border:0;border-radius:6px;cursor:pointer}
+    #ps-us-picker .sw button.on,#ps-qe .qe-sw button.on{outline:2px solid #fff;outline-offset:1px}
+    #ps-qe .qe-sw button:first-child{border:1px dashed #8d90a0;background:transparent;color:#b8bac4}
+    #ps-us-picker .auto{width:100%;margin-top:8px;padding:6px;border:0;border-radius:6px;background:#3a3f4d;
+      color:#e6e6ea;font:inherit;cursor:pointer}
+    #ps-us-picker .auto:hover{background:#4a5060}
   ` }));
 
   console.log("[pulsantiera] caricata", location.href);
