@@ -753,6 +753,7 @@
     link: "M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7 M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7",
     archive: "M3 4h18v4H3z M5 8v12h14V8 M10 12h4",
     pencil: "M17 3l4 4L8 20H4v-4L17 3z",
+    hours: "M12 22a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 9v4l2 2 M10 2h4",
   };
   const svg = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${QE_ICONS[k]}"/></svg>`;
 
@@ -788,7 +789,7 @@
     const has = (f) => !!fields[f];
     const DATE_FIELDS = ["planned_date_begin", "date_deadline"].filter(has);
     const readFields = ["name", "tag_ids", "user_ids", "stage_id", "project_id", "displayed_image_id",
-      ...DATE_FIELDS, SPRINT_FIELD].filter(has);
+      ...DATE_FIELDS, SPRINT_FIELD, "effective_hours", "allocated_hours"].filter(has);
 
     let data;
     const reload = async () => { [data] = await orm.read(TASK, [id], readFields); };
@@ -976,6 +977,69 @@
       ];
     };
 
+    const todayIso = () => { const n = new Date(); return `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`; };
+    const hoursPop = async () => {
+      if (!data.project_id) {
+        return [el("h4", { textContent: "Registra ore" }),
+          el("p", { className: "hint", textContent: "La scheda non ha un progetto: non è possibile registrare ore." })];
+      }
+      const hIn = el("input", { placeholder: "Quante ore? es. 2, 1,5 o 1:30", inputMode: "decimal" });
+      const dIn = el("input", { type: "date", value: todayIso() });
+      const descIn = el("input", { placeholder: "Descrizione (facoltativa)" });
+
+      async function submit(preset) {
+        const hours = preset ?? parseHours(hIn.value);
+        if (!hours) { alert("Ore non valide (es. 2, 1,5 o 1:30)."); hIn.focus(); return; }
+        try {
+          const r2 = await orm.create(TS_MODEL, [{
+            date: dIn.value || todayIso(),
+            project_id: data.project_id[0],
+            task_id: id,
+            name: descIn.value.trim() || "/",
+            unit_amount: hours,
+          }]);
+          const lineId = Array.isArray(r2) ? r2[0] : r2;
+          await reload();
+          await refreshView();
+          hidePop();
+          const close = notification.add(`Registrate ${fmtHours(hours)} h su "${data.name}" (${fmtDay(dIn.value || todayIso())}).`, {
+            type: "success",
+            buttons: [{
+              name: "Annulla",
+              onClick: async () => {
+                close?.();
+                try {
+                  await orm.unlink(TS_MODEL, [lineId]);
+                  await refreshView();
+                  notification.add("Registrazione annullata.", { type: "info" });
+                } catch (e) { fail(e); }
+              },
+            }],
+          });
+        } catch (e) { fail(e); }
+      }
+      for (const n of [hIn, descIn]) n.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); submit(); }
+      });
+      setTimeout(() => hIn.focus());
+
+      const logged = has("effective_hours")
+          ? `Già registrate: ${fmtHours(data.effective_hours || 0)} h` +
+          (data.allocated_hours ? ` su ${fmtHours(data.allocated_hours)} h previste` : "")
+          : null;
+      return [
+        el("h4", { textContent: "Registra ore" }),
+        logged ? el("p", { className: "hint", textContent: logged }) : null,
+        el("label", { textContent: "Ore" }), hIn,
+        el("div", { className: "acts" }, ...[0.5, 1, 2, 4, 8].map((h) =>
+            el("button", { textContent: fmtHours(h), title: `Registra subito ${fmtHours(h)} h`, onclick: () => submit(h) }))),
+        el("label", { textContent: "Data" }), dIn,
+        el("label", { textContent: "Descrizione" }), descIn,
+        el("div", { className: "acts" },
+            el("button", { className: "primary", textContent: "Registra", onclick: () => submit() })),
+      ];
+    };
+
     const copyLink = async () => {
       const url = `${location.origin}/web#id=${id}&model=${TASK}&view_type=form`;
       try { await navigator.clipboard.writeText(url); notification.add("Link copiato.", { type: "info" }); }
@@ -995,6 +1059,7 @@
         return action.doAction({ type: "ir.actions.act_window", res_model: TASK, res_id: id,
           views: [[false, "form"]], target: "current" });
       }],
+      ["hours", "Registra ore", (b) => showPop(b, hoursPop)],
       ["tag", "Modifica etichette", (b) => showPop(b, tagsPop)],
       ["user", "Modifica membri", (b) => showPop(b, membersPop)],
       ["image", "Cambia copertina", (b) => showPop(b, coverPop)],
