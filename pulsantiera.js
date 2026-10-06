@@ -1499,15 +1499,31 @@
     return a ? `a${a}-${p.get("active_id") || 0}` : "home";
   };
 
-  async function resizeImage(file, max = 2560) {
-    const bmp = await createImageBitmap(file);
-    const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  // Risoluzione utile per questo schermo (tiene conto di HiDPI / zoom di sistema)
+  const screenNeed = () => Math.ceil(Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1));
+
+  // Tiene l'originale se già adatto; altrimenti ridimensiona con ricampionamento di alta qualità
+  async function prepareImage(file) {
+    const probe = await createImageBitmap(file);
+    const w = probe.width, h = probe.height;
+    probe.close?.();
+    const need = Math.max(2560, screenNeed());
+    const long = Math.max(w, h);
+    if (long <= need * 1.25 && file.size <= 15 * 1024 * 1024) return { blob: file, w, h, need, resized: false };
+    const k = need / long;
+    const bmp = await createImageBitmap(file, {
+      resizeWidth: Math.round(w * k), resizeHeight: Math.round(h * k), resizeQuality: "high",
+    });
     const c = document.createElement("canvas");
-    c.width = Math.round(bmp.width * k);
-    c.height = Math.round(bmp.height * k);
-    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    c.width = bmp.width;
+    c.height = bmp.height;
+    const ctx = c.getContext("2d");
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bmp, 0, 0);
     bmp.close?.();
-    return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("conversione non riuscita"))), "image/jpeg", 0.85));
+    const blob = await new Promise((res, rej) =>
+        c.toBlob((b) => (b ? res(b) : rej(new Error("conversione non riuscita"))), "image/webp", 0.93));
+    return { blob, w, h, need, resized: true };
   }
 
   let bgSig = null, bgUrl = null;
@@ -1579,11 +1595,15 @@
     fileIn.onchange = () => run((async () => {
       const f = fileIn.files?.[0];
       if (!f) return;
-      const blob = await resizeImage(f);
+      const img = await prepareImage(f);
       const key = `bg:${scopeSel.value}`;
-      await idb.set(key, blob);
+      await idb.set(key, img.blob);
       await setScope({ type: "image", value: key });
       fileIn.value = "";
+      const need = screenNeed();
+      if (Math.max(img.w, img.h) < need * 0.8) {
+        alert(`L'immagine è ${img.w}×${img.h} px, ma il tuo schermo ne richiede circa ${need} sul lato lungo: apparirà sgranata. Usa un'immagine più grande.`);
+      }
     })());
 
     const urlIn = el("input", { placeholder: "https://…/immagine.jpg" });
@@ -1636,6 +1656,7 @@
     ${BG_HOST.join(",")}{background:linear-gradient(rgba(0,0,0,var(--ps-bg-dim)),rgba(0,0,0,var(--ps-bg-dim))),
       var(--ps-bg-img) center/cover no-repeat!important}
     ${under(BG_HOST, ".o_view_controller, .o_content, .o_kanban_renderer")}{background:transparent!important}
+    ${under(BG_HOST, ".o_kanban_group, .o_kanban_header")}{background:transparent!important}
     ${under(GLASS_HOST, ".o_kanban_group:not(.o_column_folded)")}{background:rgba(18,20,28,.55)!important;
       backdrop-filter:blur(6px);border-radius:10px}
     ${under(GLASS_HOST, ".o_kanban_header")}{background:rgba(18,20,28,.8)!important;backdrop-filter:blur(6px)}
