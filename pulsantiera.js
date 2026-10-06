@@ -739,5 +739,376 @@
     }
   }).observe(document.body, { childList: true, subtree: true });
 
+  /* ---------- Modifica rapida stile Trello (✎ o tasto destro su una scheda) ---------- */
+  const QE_MODELS = [TASK];
+  const QE_ICONS = {
+    open: "M4 4h16v16H4z M4 9h16",
+    tag: "M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z M7.5 7.5h.01",
+    user: "M20 21a8 8 0 0 0-16 0 M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z",
+    image: "M3 3h18v18H3z M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z M21 15l-5-5L5 21",
+    clock: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M12 6v6l4 2",
+    move: "M5 12h14 M13 6l6 6-6 6",
+    zap: "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
+    copy: "M8 8h12v12H8z M4 16V4h12",
+    link: "M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7 M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7",
+    archive: "M3 4h18v4H3z M5 8v12h14V8 M10 12h4",
+    pencil: "M17 3l4 4L8 20H4v-4L17 3z",
+  };
+  const svg = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${QE_ICONS[k]}"/></svg>`;
+
+  let qe = null, taskFields = null;
+  const qeKey = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeQE(); } };
+  function closeQE() {
+    if (!qe) return;
+    document.removeEventListener("keydown", qeKey, true);
+    qe.remove();
+    qe = null;
+  }
+  async function getTaskFields(orm) {
+    if (!taskFields) taskFields = await orm.call(TASK, "fields_get", [], { attributes: ["type", "string"] });
+    return taskFields;
+  }
+  const toLocalInput = (v, type) => {
+    if (!v) return "";
+    if (type === "date") return v;
+    const d = new Date(v.replace(" ", "T") + "Z");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const fromLocalInput = (v, type) => {
+    if (!v) return false;
+    if (type === "date") return v;
+    return new Date(v).toISOString().slice(0, 19).replace("T", " ");
+  };
+
+  async function openQE(card, rec) {
+    closeQE();
+    const { orm, notification, action } = getEnv().services;
+    const id = rec.resId;
+    const fields = await getTaskFields(orm);
+    const has = (f) => !!fields[f];
+    const DATE_FIELDS = ["planned_date_begin", "date_deadline"].filter(has);
+    const readFields = ["name", "tag_ids", "user_ids", "stage_id", "project_id", "displayed_image_id",
+      ...DATE_FIELDS, SPRINT_FIELD].filter(has);
+
+    let data;
+    const reload = async () => { [data] = await orm.read(TASK, [id], readFields); };
+    const refreshView = async () => {
+      try { await rec.model.load(); } catch (e) { console.warn("[pulsantiera] ricarica vista non riuscita:", e); }
+    };
+    const write = async (vals, msg) => {
+      await orm.write(TASK, [id], vals);
+      await reload();
+      await refreshView();
+      if (msg) notification.add(msg, { type: "success" });
+    };
+    await reload();
+
+    const r = card.getBoundingClientRect();
+    qe = el("div", { id: "ps-qe" });
+    qe.addEventListener("mousedown", (e) => { if (e.target === qe) closeQE(); });
+    qe.addEventListener("contextmenu", (e) => { e.preventDefault(); if (e.target === qe) closeQE(); });
+    document.addEventListener("keydown", qeKey, true);
+
+    /* titolo modificabile al posto della scheda */
+    const title = el("textarea", { value: data.name, rows: 3 });
+    title.setAttribute("aria-label", "Titolo della scheda");
+    async function saveTitle() {
+      const v = title.value.trim();
+      if (!v || v === data.name) return closeQE();
+      try { await write({ name: v }); closeQE(); } catch (e) { fail(e); }
+    }
+    title.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveTitle(); }
+    });
+    const box = el("div", { className: "qe-card" }, title,
+        el("button", { className: "primary", textContent: "Salva", onclick: saveTitle }));
+    box.style.left = r.left + "px";
+    box.style.width = r.width + "px";
+
+    const menu = el("div", { className: "qe-menu" });
+    const pop = el("div", { className: "qe-pop", hidden: true });
+
+    /* popover */
+    let popFor = null;
+    const hidePop = () => { pop.hidden = true; popFor = null; };
+    function placePop(btn) {
+      const m = menu.getBoundingClientRect(), b = btn.getBoundingClientRect(), w = 280;
+      let left = m.right + 8;
+      if (left + w > innerWidth - 8) left = m.left - 8 - w;
+      pop.style.left = Math.max(8, left) + "px";
+      pop.style.top = Math.max(8, Math.min(b.top, innerHeight - pop.offsetHeight - 8)) + "px";
+    }
+    async function showPop(btn, build) {
+      if (popFor === btn && !pop.hidden) return hidePop();
+      popFor = btn;
+      pop.hidden = false;
+      pop.replaceChildren(el("p", { className: "hint", textContent: "Carico…" }));
+      placePop(btn);
+      try { pop.replaceChildren(...(await build()).filter(Boolean)); }
+      catch (e) { hidePop(); return fail(e); }
+      placePop(btn);
+    }
+    const done = (p) => p.then(hidePop).catch(fail);
+
+    function multiPicker({ title: t, items, selected, onSave, onCreate }) {
+      const sel = new Set(selected);
+      const search = el("input", { placeholder: "Cerca…" });
+      const list = el("div", { className: "qe-list" });
+      const createBtn = onCreate ? el("button", { className: "qe-create", hidden: true }) : null;
+      const draw = () => {
+        const q = search.value.trim().toLowerCase();
+        list.replaceChildren(...items.filter((i) => i.name.toLowerCase().includes(q)).slice(0, 200).map((i) => {
+          const cb = el("input", { type: "checkbox", checked: sel.has(i.id),
+            onchange: () => (cb.checked ? sel.add(i.id) : sel.delete(i.id)) });
+          return el("label", { className: "chk" }, cb, i.name);
+        }));
+        if (createBtn) {
+          createBtn.hidden = !q || items.some((i) => i.name.toLowerCase() === q);
+          createBtn.textContent = `Crea "${search.value.trim()}"`;
+        }
+      };
+      search.oninput = draw;
+      if (createBtn) createBtn.onclick = async () => {
+        try {
+          const name = search.value.trim();
+          const r2 = await onCreate(name);
+          const newId = Array.isArray(r2) ? r2[0] : r2;
+          items.push({ id: newId, name });
+          sel.add(newId);
+          search.value = "";
+          draw();
+        } catch (e) { fail(e); }
+      };
+      draw();
+      setTimeout(() => search.focus());
+      return [el("h4", { textContent: t }), search, createBtn, list,
+        el("div", { className: "acts" },
+            el("button", { className: "primary", textContent: "Salva", onclick: () => done(onSave([...sel])) }))];
+    }
+
+    const tagsPop = async () => {
+      const tags = await orm.searchRead("project.tags", [], ["name"], { order: "name", limit: 1000 });
+      return multiPicker({
+        title: "Etichette", items: tags, selected: data.tag_ids,
+        onSave: (ids) => write({ tag_ids: [[6, 0, ids]] }, "Etichette aggiornate."),
+        onCreate: (name) => orm.create("project.tags", [{ name }]),
+      });
+    };
+    const membersPop = async () => {
+      const users = await orm.searchRead("res.users", [["share", "=", false]], ["name"], { order: "name", limit: 1000 });
+      return multiPicker({
+        title: "Membri", items: users, selected: data.user_ids,
+        onSave: (ids) => write({ user_ids: [[6, 0, ids]] }, "Membri aggiornati."),
+      });
+    };
+    const coverPop = async () => {
+      const imgs = await orm.searchRead("ir.attachment",
+          [["res_model", "=", TASK], ["res_id", "=", id], ["mimetype", "ilike", "image"]], ["name"]);
+      const cur = data.displayed_image_id?.[0] || false;
+      return [
+        el("h4", { textContent: "Copertina" }),
+        imgs.length
+            ? el("div", { className: "qe-tiles" }, ...imgs.map((a) => el("button", {
+              className: "qe-tile" + (a.id === cur ? " on" : ""), title: a.name,
+              onclick: () => done(write({ displayed_image_id: a.id }, "Copertina aggiornata.")),
+            }, el("img", { src: `/web/image/${a.id}/240x140`, alt: a.name }))))
+            : el("p", { className: "hint", textContent: "Nessuna immagine allegata. Allega un'immagine dal chatter della scheda per usarla come copertina." }),
+        el("div", { className: "acts" }, el("button", {
+          textContent: "Rimuovi copertina", disabled: !cur,
+          onclick: () => done(write({ displayed_image_id: false }, "Copertina rimossa.")),
+        })),
+      ];
+    };
+    const datesPop = async () => {
+      const inputs = DATE_FIELDS.map((f) => {
+        const t = fields[f].type;
+        return [f, t, el("input", { type: t === "date" ? "date" : "datetime-local", value: toLocalInput(data[f], t) })];
+      });
+      return [
+        el("h4", { textContent: "Date" }),
+        ...inputs.flatMap(([f, , i]) => [el("label", { textContent: fields[f].string }), i]),
+        el("div", { className: "acts" },
+            el("button", { className: "primary", textContent: "Salva",
+              onclick: () => done(write(Object.fromEntries(inputs.map(([f, t, i]) => [f, fromLocalInput(i.value, t)])), "Date aggiornate.")) }),
+            el("button", { textContent: "Svuota", onclick: () => inputs.forEach(([, , i]) => { i.value = ""; }) })),
+      ];
+    };
+    const movePop = async () => {
+      const projects = await orm.searchRead("project.project", [], ["display_name"], { order: "name", limit: 1000 });
+      const projSel = el("select", {}, ...projects.map((p) => el("option", { value: String(p.id), textContent: p.display_name })));
+      projSel.value = String(data.project_id?.[0] || "");
+      const stageSel = el("select");
+      const loadStages = async () => {
+        const st = await orm.searchRead("project.task.type", [["project_ids", "in", [Number(projSel.value)]]],
+            ["name"], { order: "sequence, id" });
+        stageSel.replaceChildren(...st.map((x) => el("option", { value: String(x.id), textContent: x.name })));
+        if (st.some((x) => x.id === data.stage_id?.[0])) stageSel.value = String(data.stage_id[0]);
+      };
+      projSel.onchange = () => loadStages().catch(fail);
+      await loadStages();
+      return [
+        el("h4", { textContent: "Sposta" }),
+        el("label", { textContent: "Progetto" }), projSel,
+        el("label", { textContent: "Fase" }), stageSel,
+        el("div", { className: "acts" }, el("button", {
+          className: "primary", textContent: "Sposta",
+          onclick: async () => {
+            const vals = { stage_id: Number(stageSel.value) || false };
+            if (Number(projSel.value) !== data.project_id?.[0]) vals.project_id = Number(projSel.value);
+            try { await write(vals, "Scheda spostata."); closeQE(); } catch (e) { fail(e); }
+          },
+        })),
+      ];
+    };
+    const sprintPop = async () => {
+      const cur = await sprintValue(orm, 0);
+      const inp = el("input", { type: "number", min: "0", value: data[SPRINT_FIELD] || "" });
+      const set = (n) => done(write({ [SPRINT_FIELD]: n }, n ? `Spostata nello sprint #${n}.` : "Sprint rimosso."));
+      return [
+        el("h4", { textContent: "Sprint" }),
+        cur ? el("div", { className: "acts" },
+            el("button", { textContent: `Corrente #${cur}`, onclick: () => set(cur) }),
+            el("button", { textContent: `Successivo #${cur + 1}`, onclick: () => set(cur + 1) })) : null,
+        el("label", { textContent: "Numero" }), inp,
+        el("div", { className: "acts" },
+            el("button", { className: "primary", textContent: "Salva", onclick: () => set(Number(inp.value) || 0) }),
+            el("button", { textContent: "Rimuovi", onclick: () => set(0) })),
+      ];
+    };
+
+    const copyLink = async () => {
+      const url = `${location.origin}/web#id=${id}&model=${TASK}&view_type=form`;
+      try { await navigator.clipboard.writeText(url); notification.add("Link copiato.", { type: "info" }); }
+      catch { prompt("Copia il link:", url); }
+    };
+    const archive = async () => {
+      if (!confirm("Archiviare la scheda?")) return;
+      await orm.write(TASK, [id], { active: false });
+      closeQE();
+      await refreshView();
+      notification.add("Scheda archiviata.", { type: "success" });
+    };
+
+    const actions = [
+      ["open", "Apri scheda", () => {
+        closeQE();
+        return action.doAction({ type: "ir.actions.act_window", res_model: TASK, res_id: id,
+          views: [[false, "form"]], target: "current" });
+      }],
+      ["tag", "Modifica etichette", (b) => showPop(b, tagsPop)],
+      ["user", "Modifica membri", (b) => showPop(b, membersPop)],
+      ["image", "Cambia copertina", (b) => showPop(b, coverPop)],
+      DATE_FIELDS.length ? ["clock", "Modifica le date", (b) => showPop(b, datesPop)] : null,
+      ["move", "Sposta", (b) => showPop(b, movePop)],
+      has(SPRINT_FIELD) ? ["zap", "Sprint", (b) => showPop(b, sprintPop)] : null,
+      ["copy", "Copia scheda", () => { closeQE(); return duplicate(rec); }],
+      ["link", "Copia link", copyLink],
+      ["archive", "Archivia", archive],
+    ].filter(Boolean);
+
+    for (const [ic, label, fn] of actions) {
+      const b = el("button", { className: "qe-act" });
+      b.innerHTML = svg(ic);
+      b.append(label);
+      b.onclick = () => Promise.resolve(fn(b)).catch(fail);
+      menu.append(b);
+    }
+
+    qe.append(box, menu, pop);
+    document.body.append(qe);
+    box.style.top = Math.max(8, Math.min(r.top, innerHeight - box.offsetHeight - 8)) + "px";
+    let ml = r.right + 8;
+    if (ml + menu.offsetWidth > innerWidth - 8) ml = r.left - 8 - menu.offsetWidth;
+    menu.style.left = Math.max(8, ml) + "px";
+    menu.style.top = Math.max(8, Math.min(r.top, innerHeight - menu.offsetHeight - 8)) + "px";
+    title.focus();
+    title.select();
+  }
+
+  const qeTarget = (node) => {
+    const card = node?.closest?.(".o_kanban_record");
+    if (!card || node.closest("#ps-qe")) return null;
+    const rec = findRecord(card);
+    return rec && QE_MODELS.includes(rec.resModel) ? { card, rec } : null;
+  };
+
+  // tasto destro sulla scheda (Shift + tasto destro = menu del browser)
+  document.addEventListener("contextmenu", (e) => {
+    if (e.shiftKey) return;
+    const t = qeTarget(e.target);
+    if (!t) return;
+    e.preventDefault();
+    openQE(t.card, t.rec).catch(fail);
+  });
+
+  // matita al passaggio del mouse, come in Trello
+  const pencil = el("button", { id: "ps-qe-pencil", title: "Modifica rapida (anche tasto destro)", hidden: true });
+  pencil.innerHTML = svg("pencil");
+  let pencilCard = null;
+  const hidePencil = () => { pencil.hidden = true; pencilCard = null; };
+  document.addEventListener("mouseover", (e) => {
+    if (qe || e.target.closest?.("#ps-qe-pencil")) return;
+    const card = e.target.closest?.(".o_kanban_record");
+    if (card && card === pencilCard) return;
+    hidePencil();
+    const t = card && qeTarget(e.target);
+    if (!t) return;
+    pencilCard = card;
+    const r = card.getBoundingClientRect();
+    pencil.style.left = (r.right - 62) + "px";
+    pencil.style.top = (r.top + 6) + "px";
+    pencil.hidden = false;
+  });
+  document.addEventListener("scroll", hidePencil, true);
+  pencil.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const card = pencilCard;
+    hidePencil();
+    const rec = card?.isConnected && findRecord(card);
+    if (rec) openQE(card, rec).catch(fail);
+  });
+  document.body.append(pencil);
+
+  document.head.append(el("style", { textContent: `
+    #ps-qe{position:fixed;inset:0;z-index:10000;background:#0009;color:#e6e6ea;color-scheme:dark;
+      font:13px/1.4 system-ui,sans-serif}
+    #ps-qe [hidden],#ps-qe-pencil[hidden]{display:none!important}
+    #ps-qe .qe-card{position:fixed;display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+    #ps-qe .qe-card textarea{width:100%;box-sizing:border-box;min-height:84px;padding:10px;border:0;
+      border-radius:8px;background:#2b2f3b;color:#fff;font:600 15px/1.35 system-ui,sans-serif;resize:vertical;
+      box-shadow:0 2px 8px #0008}
+    #ps-qe button{border:0;border-radius:6px;padding:8px 12px;cursor:pointer;background:#3a3f4d;
+      color:#e6e6ea;font:inherit}
+    #ps-qe button:hover:not(:disabled){background:#4a5060}
+    #ps-qe button:disabled{opacity:.4;cursor:default}
+    #ps-qe .primary{background:#714b67;color:#fff}
+    #ps-qe .primary:hover:not(:disabled){background:#8a5d7f}
+    #ps-qe .qe-menu{position:fixed;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+    #ps-qe .qe-act{display:flex;align-items:center;gap:8px;background:#1f232d;box-shadow:0 1px 4px #0008}
+    #ps-qe svg,#ps-qe-pencil svg{width:16px;height:16px;flex:none}
+    #ps-qe .qe-pop{position:fixed;width:280px;max-height:70vh;overflow:auto;box-sizing:border-box;padding:12px;
+      border-radius:10px;background:#262a36;box-shadow:0 4px 18px #000a}
+    #ps-qe h4{margin:0 0 8px;font-size:14px;font-weight:600;color:#fff}
+    #ps-qe label{display:block;margin:8px 0 3px;color:#b8bac4}
+    #ps-qe input,#ps-qe select{width:100%;box-sizing:border-box;padding:7px;border-radius:6px;
+      border:1px solid #4a5060;background:#1d2029;color:#e6e6ea;font:inherit}
+    #ps-qe label.chk{display:flex;align-items:center;gap:8px;margin:2px 0;padding:4px 6px;border-radius:4px;
+      color:#e6e6ea;cursor:pointer}
+    #ps-qe label.chk:hover{background:#3a3f4d}
+    #ps-qe label.chk input{width:auto;margin:0}
+    #ps-qe .qe-list{max-height:260px;overflow:auto;margin-top:6px}
+    #ps-qe .qe-create{width:100%;margin-top:6px;text-align:left}
+    #ps-qe .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+    #ps-qe .hint{margin:6px 0 0;color:#8d90a0;font-size:12px}
+    #ps-qe .qe-tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+    #ps-qe .qe-tile{padding:2px;background:#1d2029}
+    #ps-qe .qe-tile.on{outline:2px solid #017e84}
+    #ps-qe .qe-tile img{display:block;width:100%;height:70px;object-fit:cover;border-radius:4px}
+    #ps-qe :focus-visible{outline:2px solid #017e84;outline-offset:1px}
+    #ps-qe-pencil{position:fixed;z-index:9998;display:flex;align-items:center;justify-content:center;
+      width:28px;height:28px;padding:0;border:0;border-radius:6px;background:#3a3f4dee;color:#e6e6ea;cursor:pointer}
+    #ps-qe-pencil:hover{background:#714b67;color:#fff}
+  ` }));
+
   console.log("[pulsantiera] caricata", location.href);
 })();
