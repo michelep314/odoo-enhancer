@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Odoo Enhancer",
+  "version": "1.0",
+  "description": "Nuove funzionalita' per personalizzare odoo",
+  "content_scripts": [
+    {
+      "matches": ["https://stesi-pes.odoo.com/web*"],
+      "js": ["pulsantiera.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    }
+  ]
+}
