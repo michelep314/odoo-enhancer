@@ -665,5 +665,79 @@
   document.addEventListener("keydown", (e) => {
     if (e.altKey && e.key.toLowerCase() === "p") bar.classList.toggle("min");
   });
+  /* ---------- "Duplica scheda" nel menu ⋮ delle schede kanban ---------- */
+  const DUP_MODELS = [TASK, "helpdesk.ticket"];
+  let lastCard = null, lastCardAt = 0;
+
+  // Risale dal DOM della scheda al record Odoo (componente Owl KanbanRecord)
+  function findRecord(card) {
+    const root = getEnv() && odoo.__WOWL_DEBUG__.root.__owl__;
+    const dataId = card.dataset.id;
+    const stack = root ? [root] : [];
+    while (stack.length) {
+      const n = stack.pop();
+      const rec = n.component?.props?.record;
+      if (rec?.resId && (n.component.rootRef?.el === card || (dataId && rec.id === dataId))) return rec;
+      stack.push(...Object.values(n.children || {}));
+    }
+    return null;
+  }
+
+  async function duplicate(rec) {
+    const { orm, notification, action } = getEnv().services;
+    const r = await orm.call(rec.resModel, "copy", [[rec.resId]]);
+    const newId = Array.isArray(r) ? r[0] : r;
+    try { await rec.model.load(); } catch (e) { console.warn("[pulsantiera] ricarica vista non riuscita:", e); }
+    const [n] = await orm.read(rec.resModel, [newId], ["display_name"]);
+    notification.add(`Scheda duplicata: ${n?.display_name || "#" + newId}`, {
+      type: "success",
+      buttons: [{
+        name: "Apri", primary: true,
+        onClick: () => action.doAction({
+          type: "ir.actions.act_window", res_model: rec.resModel, res_id: newId,
+          views: [[false, "form"]], target: "current",
+        }),
+      }],
+    });
+  }
+
+  function closeMenu(card) {
+    const toggle = card.querySelector(".o_dropdown_kanban .dropdown-toggle");
+    if (toggle) toggle.click();
+    else document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  }
+
+  function inject(menu) {
+    if (menu.querySelector(".ps-dup")) return;
+    const inCard = menu.closest(".o_kanban_record");
+    const card = inCard || (Date.now() - lastCardAt < 1500 ? lastCard : null);
+    if (!card || !card.isConnected) return;
+    const rec = findRecord(card);
+    if (!rec || !DUP_MODELS.includes(rec.resModel)) return;
+    const item = el("a", {
+      href: "#", role: "menuitem", className: "dropdown-item o-dropdown-item ps-dup", textContent: "Duplica scheda",
+    });
+    item.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeMenu(card);
+      duplicate(rec).catch(fail);
+    });
+    menu.prepend(item, el("div", { className: "dropdown-divider" }));
+  }
+
+  document.addEventListener("click", (e) => {
+    const t = e.target.closest?.(".o_kanban_record .o_dropdown_kanban, .o_kanban_record .dropdown-toggle");
+    if (t) { lastCard = t.closest(".o_kanban_record"); lastCardAt = Date.now(); }
+  }, true);
+
+  new MutationObserver((muts) => {
+    for (const m of muts) for (const n of m.addedNodes) {
+      if (!(n instanceof HTMLElement)) continue;
+      const sel = ".dropdown-menu, .o-dropdown--menu";
+      for (const menu of n.matches(sel) ? [n] : n.querySelectorAll(sel)) inject(menu);
+    }
+  }).observe(document.body, { childList: true, subtree: true });
+
   console.log("[pulsantiera] caricata", location.href);
 })();
