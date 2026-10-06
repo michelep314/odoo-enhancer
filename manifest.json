@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Odoo Enhancer",
-  "version": "1.0",
+  "version": "1.12",
   "description": "Nuove funzionalita' per personalizzare odoo",
   "content_scripts": [
     {
