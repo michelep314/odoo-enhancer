@@ -246,3 +246,50 @@ html[data-ps-look] .ps-us{border-radius:max(3px,calc(var(--ps-radius) * .45))}
   color:#b8bac4;font-size:18px;line-height:1;cursor:pointer}
 #ps-search .x:hover{background:#714b67;color:#fff}
 #ps-search:focus-within{border-color:#714b67}
+
+/* ---------- Novità ---------- */
+#ps-bar button.ps-new,#ps-bar.min.ps-has-new .ps-toggle{position:relative}
+#ps-bar button.ps-new::after,#ps-bar.min.ps-has-new .ps-toggle::after{content:"";position:absolute;top:4px;right:4px;
+  width:8px;height:8px;border-radius:50%;background:#F06050;box-shadow:0 0 0 2px #262a36}
+#ps-panel .news-item{margin:8px 0 0;padding:8px 10px;border-left:3px solid #714b67;border-radius:0 6px 6px 0;background:#1d2029}
+#ps-panel .news-item strong{display:block;color:#fff;font-weight:600}
+#ps-panel .news-item p{margin:3px 0 0}
+#ps-panel .news-item p.hint{margin-top:4px}
+#ps-panel details.news-old{margin-top:6px;border-radius:6px;background:#2b2f3b}
+#ps-panel details.news-old summary{padding:7px 10px;color:#e6e6ea;cursor:pointer;user-select:none}
+#ps-panel details.news-old summary:hover{color:#fff}
+#ps-panel details.news-old[open]{padding-bottom:8px}
+#ps-panel details.news-old .news-item{margin:6px 8px 0}
+
+/* ---------- Strumenti nella barra in alto di Odoo (accanto alla chat) ---------- */
+#ps-tray{display:flex;align-items:center;gap:2px;height:100%;margin-right:6px;padding-right:6px;
+  border-right:1px solid color-mix(in srgb,currentColor 22%,transparent)}
+#ps-tray button{position:relative;display:flex;align-items:center;justify-content:center;width:34px;height:34px;
+  padding:0;border:0;border-radius:6px;background:transparent;color:var(--NavBar-entry-color,inherit);cursor:pointer}
+#ps-tray button:hover{background:color-mix(in srgb,currentColor 14%,transparent)}
+#ps-tray button.active{background:#714b67;color:#fff}
+#ps-tray button:focus-visible{outline:2px solid #017e84;outline-offset:1px}
+#ps-tray svg{width:18px;height:18px}
+#ps-tray .ps-tray-toggle{width:22px;opacity:.6}
+#ps-tray .ps-tray-toggle:hover{opacity:1}
+#ps-tray.collapsed{margin-right:2px;padding-right:2px;border-right:0}
+#ps-tray button.ps-new::after,#ps-tray.collapsed.ps-has-new .ps-tray-toggle::after{content:"";position:absolute;top:5px;right:5px;
+  width:8px;height:8px;border-radius:50%;background:#F06050;box-shadow:0 0 0 2px var(--NavBar-background-color,#262a36)}
+#ps-tray.collapsed.ps-has-new .ps-tray-toggle{opacity:1}
+/* aperto: al centro della barra di Odoo (compresso torna a destra, accanto alla chat) */
+.o_main_navbar:has(> #ps-tray.centered){position:relative}
+#ps-tray.centered{position:absolute;top:5px;bottom:5px;left:50%;z-index:1;height:auto;margin:0;padding:0 4px;
+  transform:translateX(-50%);border-right:0;border-radius:8px;background:color-mix(in srgb,currentColor 7%,transparent)}
+/* pannello aperto dalla barra in alto: sotto le icone (a destra, o centrato se le icone sono al centro) */
+#ps-panel.top{left:auto;right:12px;bottom:auto;max-height:calc(100vh - 90px)}
+#ps-panel.top.center{left:50%;right:auto;transform:translateX(-50%)}
+/* barra in basso: senza scorciatoie non serve */
+#ps-bar.empty{display:none}
+/* strumenti nella barra in basso (solo se la barra di Odoo non c'è) */
+#ps-bar .ps-tool{display:flex;align-items:center;background:transparent;padding:6px 8px}
+#ps-bar .ps-tool svg{width:16px;height:16px}
+#ps-tray button{transition:background-color .15s ease,color .15s ease,opacity .15s ease}
+#ps-tray .ps-tray-toggle svg{transition:transform .2s ease}
+#ps-tray .ps-tray-toggle:hover svg{transform:translateX(2px)}
+#ps-tray.collapsed .ps-tray-toggle:hover svg{transform:translateX(-2px)}
+@media (prefers-reduced-motion: reduce){#ps-tray button,#ps-tray .ps-tray-toggle svg{transition:none}}

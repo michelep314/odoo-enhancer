@@ -3,7 +3,7 @@
   "use strict";
   const PS = window.__ps;
   if (!PS || PS.ready) return;
-  const { TASK, SPRINT_FIELD, getEnv, mod, Domain, el, fail, store, evalCtx, sprintValue } = PS;
+  const { TASK, SPRINT_FIELD, getEnv, mod, Domain, el, fail, svg, store, evalCtx, sprintValue } = PS;
 
   /* ================= CONFIGURAZIONE ================= */
   const DEFAULTS = [
@@ -132,7 +132,7 @@
   let panel = null, panelKind = null;
   // evidenzia nella barra il pulsante del pannello aperto
   const syncActive = () => {
-    for (const b of document.querySelectorAll("#ps-bar [data-panel]")) {
+    for (const b of document.querySelectorAll("#ps-bar [data-panel], #ps-tray [data-panel]")) {
       const on = b.dataset.panel === panelKind;
       b.classList.toggle("active", on);
       b.setAttribute("aria-pressed", String(on));
@@ -154,8 +154,10 @@
     panel = el("div", { id: "ps-panel" });
     panelKind = kind;
     document.body.append(panel);
+    placePanel();
     syncActive();
-    await (kind === "ts" ? PS.renderTs(env, panel) : kind === "bg" ? PS.renderBg(panel) : renderPanel(env));
+    await (kind === "ts" ? PS.renderTs(env, panel) : kind === "bg" ? PS.renderBg(panel)
+        : kind === "news" ? PS.renderNews(panel) : renderPanel(env));
   }
 
   const fillViewSelect = (sel, modes, current) => {
@@ -323,31 +325,166 @@
         el("div", { className: "acts" }, el("button", { textContent: "Chiudi", onclick: () => togglePanel("buttons") })));
   }
 
-  /* ---------- barra ---------- */
-  const bar = el("div", { id: "ps-bar" });
-  // riducendo la barra si chiude anche il pannello aperto
-  const toggleBar = () => { if (bar.classList.toggle("min")) closePanel(); };
-  const panelBtn = (kind, text, title) => {
-    const b = el("button", { className: "ps-manage", textContent: text, title,
-      onclick: () => togglePanel(kind).catch(fail) });
+  // con gli strumenti nella barra di Odoo il pannello si apre sotto di essi; altrimenti in basso a sinistra
+  function placePanel() {
+    const nav = inTray && document.querySelector(".o_main_navbar");
+    panel.classList.toggle("top", !!nav);
+    panel.classList.toggle("center", !!nav && tray.classList.contains("centered"));
+    panel.style.top = nav ? Math.round(nav.getBoundingClientRect().bottom + 6) + "px" : "";
+  }
+
+  /* ---------- strumenti (icone) ---------- */
+  const iconBtn = (icon, title, onclick) => {
+    const b = el("button", { type: "button", className: "ps-tool", title, onclick });
+    b.setAttribute("aria-label", title);
+    b.innerHTML = svg(icon);
+    return b;
+  };
+  const panelBtn = (kind, icon, title) => {
+    const b = iconBtn(icon, title, () => togglePanel(kind).catch(fail));
     b.dataset.panel = kind;
     return b;
   };
+  const toolButtons = () => {
+    const news = panelBtn("news", "sparkle", PS.hasNews() ? "Novità (da leggere)" : "Novità");
+    news.classList.toggle("ps-new", PS.hasNews());
+    return [
+      iconBtn("search", "Cerca nelle schede (/)", () => PS.openSearch()),
+      panelBtn("bg", "image", "Sfondo"),
+      panelBtn("ts", "hours", "Compila fogli ore"),
+      panelBtn("buttons", "plus", "Aggiungi o gestisci pulsanti"),
+      news,
+    ];
+  };
+
+  /* gruppo nella barra in alto di Odoo: aperto sta al centro, compresso diventa una freccia a destra accanto alla chat */
+  const TRAY = store("ps-tray-v1", { open: true }, (v) => v && typeof v.open === "boolean");
+  const trayState = TRAY.load();
+  const tray = el("div", { id: "ps-tray" });
+  let inTray = false;  // strumenti nella barra di Odoo (true) o nella barra in basso (false)
+  /* animazione apri/comprimi: le icone svaniscono o compaiono in sequenza, il gruppo scivola tra centro e chat */
+  const motionOk = () => !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const toolsOf = () => [...tray.querySelectorAll("button:not(.ps-tray-toggle)")];
+  const fadeTools = (out) => Promise.all(toolsOf().map((b, i, all) => b.animate(
+      out ? [{ opacity: 1, transform: "scale(1)" }, { opacity: 0, transform: "scale(.5)" }]
+          : [{ opacity: 0, transform: "scale(.5)" }, { opacity: 1, transform: "scale(1)" }],
+      { duration: 160, delay: (out ? i : all.length - 1 - i) * 30, easing: out ? "ease-in" : "ease-out", fill: out ? "forwards" : "backwards" },
+  ).finished.catch(() => {})));
+  // FLIP: il gruppo parte da dove si trovava la freccia e scivola nella nuova posizione
+  function slideFrom(oldRect) {
+    const t = tray.querySelector(".ps-tray-toggle");
+    if (!oldRect || !t) return;
+    const r = t.getBoundingClientRect();
+    const dx = oldRect.left - r.left, dy = oldRect.top - r.top;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+    // "translate" si somma al transform che centra il gruppo
+    tray.animate([{ translate: `${dx}px ${dy}px` }, { translate: "0 0" }],
+        { duration: 340, easing: "cubic-bezier(.2,.8,.2,1)" });
+  }
+
+  let toggling = false;
+  async function toggleTray() {
+    if (toggling) return;
+    toggling = true;
+    try {
+      const open = trayState.open;
+      const animate = motionOk() && inTray;
+      if (animate && open) {
+        tray.style.pointerEvents = "none";
+        await fadeTools(true);
+      }
+      const oldRect = tray.querySelector(".ps-tray-toggle")?.getBoundingClientRect();
+      trayState.open = !open;
+      TRAY.save(trayState);
+      renderTray();
+      ensureTray(true);
+      syncActive();
+      if (animate) {
+        slideFrom(oldRect);
+        if (!open) fadeTools(false);
+      }
+    } finally {
+      tray.style.pointerEvents = "";
+      toggling = false;
+    }
+  }
+
+  function renderTray() {
+    const open = trayState.open;
+    tray.classList.toggle("collapsed", !open);
+    tray.classList.toggle("ps-has-new", PS.hasNews());
+    const toggle = iconBtn(open ? "chevronRight" : "chevronLeft",
+        open ? "Comprimi gli strumenti di Odoo Enhancer" : "Mostra gli strumenti di Odoo Enhancer",
+        () => toggleTray().catch(fail));
+    toggle.classList.add("ps-tray-toggle");
+    toggle.setAttribute("aria-expanded", String(open));
+    tray.replaceChildren(...(open ? toolButtons() : []), toggle);
+  }
+
+  /* ---------- barra in basso: scorciatoie (e strumenti se la barra di Odoo non c'è) ---------- */
+  const bar = el("div", { id: "ps-bar" });
+  // riducendo la barra si chiude anche il pannello aperto
+  const toggleBar = () => { if (bar.classList.toggle("min")) closePanel(); };
   function render() {
+    const fallback = !inTray;
+    bar.classList.toggle("ps-has-new", fallback && PS.hasNews());  // pallino anche sul ☰ quando la barra è ridotta
+    bar.classList.toggle("empty", !fallback && !buttons.length);
     bar.replaceChildren(
         el("button", { className: "ps-toggle", textContent: "☰", title: "Mostra/nascondi (Alt+P)", onclick: toggleBar }),
         ...buttons.map((b) => el("button", { textContent: b.label, onclick: () => open(b).catch(fail) })),
-        el("button", { className: "ps-manage", textContent: "🔍", title: "Cerca nelle schede (/)", onclick: () => PS.openSearch() }),
-        panelBtn("bg", "🖼", "Sfondo"),
-        panelBtn("ts", "⏱", "Compila fogli ore"),
-        panelBtn("buttons", "+", "Aggiungi o gestisci pulsanti"));
+        ...(fallback ? toolButtons() : []));
+    if (!fallback) renderTray();
     syncActive();
   }
+
+  // Al centro c'è posto? Stima la posizione senza spostare nulla (spostare genererebbe mutazioni a ogni giro)
+  function centerFits(nav, systray) {
+    const n = nav.getBoundingClientRect();
+    const w = (tray.isConnected && !tray.classList.contains("collapsed") && tray.offsetWidth) || 220;
+    const left = n.left + n.width / 2 - w / 2, right = left + w;
+    let leftEdge = n.left;
+    for (const e of nav.querySelectorAll(".o_menu_toggle, .o_menu_brand, .o_menu_sections > *")) {
+      const r = e.getBoundingClientRect();
+      if (r.width) leftEdge = Math.max(leftEdge, r.right);
+    }
+    let rightEdge = n.right;
+    for (const e of systray.children) {
+      if (e === tray) continue;
+      const r = e.getBoundingClientRect();
+      if (r.width) rightEdge = Math.min(rightEdge, r.left);
+    }
+    return left > leftEdge + 16 && right < rightEdge - 16;
+  }
+
+  // Odoo ridisegna la barra in alto cambiando app: l'observer di main.js richiama questa funzione.
+  // Con force (apri/comprimi, cambio vista, ridimensionamento) ricontrolla anche se al centro c'è spazio.
+  let center = false;
+  function ensureTray(force = false) {
+    const nav = document.querySelector(".o_main_navbar");
+    const systray = nav?.querySelector(".o_menu_systray");
+    const misplaced = !systray || tray.parentElement !== (center ? nav : systray);
+    if (systray && (force || misplaced)) center = trayState.open && centerFits(nav, systray);
+    const target = !systray ? null : center ? nav : systray;
+    if (!target) tray.remove();
+    else if (tray.parentElement !== target) { if (center) nav.append(tray); else systray.prepend(tray); }
+    tray.classList.toggle("centered", !!target && center);
+    if (tray.isConnected !== inTray) {
+      inTray = tray.isConnected;
+      render();
+    }
+  }
+
+  ensureTray();
   render();
   document.body.append(bar);
+  let resizeTimer = null;
+  addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => ensureTray(true), 150);
+  });
   document.addEventListener("keydown", (e) => {
     if (e.altKey && e.key.toLowerCase() === "p") toggleBar();
   });
 
-  Object.assign(PS, { togglePanel });
+  Object.assign(PS, { togglePanel, renderBar: render, ensureTray });
 })();

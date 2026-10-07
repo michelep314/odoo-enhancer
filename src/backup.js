@@ -13,6 +13,8 @@
     "ps-prio-v1": "Priorità",
     "ps-cols-v1": "Colonne e aspetto",
     "ps-bg-v1": "Sfondo",
+    "ps-whatsnew-v1": "Novità già lette",
+    "ps-tray-v1": "Strumenti compressi o aperti",
   };
   const sectionName = (k) => SECTIONS[k] || k;
 

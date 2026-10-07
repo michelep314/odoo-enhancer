@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Odoo Enhancer",
-  "version": "1.14",
+  "version": "1.15",
   "description": "Nuove funzionalita' per personalizzare odoo",
   "content_scripts": [
     {
@@ -9,12 +9,14 @@
       "css": ["styles.css"],
       "js": [
         "src/core.js",
+        "src/changelog.js",
         "src/cards.js",
         "src/columns.js",
         "src/background.js",
         "src/search.js",
         "src/backup.js",
         "src/timesheet.js",
+        "src/whatsnew.js",
         "src/bar.js",
         "src/quickedit.js",
         "src/main.js"

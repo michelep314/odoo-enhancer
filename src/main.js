@@ -24,6 +24,7 @@
     lastHref = location.href;
     PS.applyBg();
     PS.clearSearch();
+    PS.ensureTray(true);  // cambiando app i menu di Odoo cambiano larghezza
   };
 
   new MutationObserver((muts) => {
@@ -37,6 +38,7 @@
       if (!deco && touchesKanban(m)) deco = true;
     }
     if (deco) PS.scheduleDecorate();
+    PS.ensureTray();
     checkUrl();
   }).observe(document.body, { childList: true, subtree: true });
   addEventListener("hashchange", checkUrl);
@@ -45,6 +47,7 @@
   PS.applyBg();
   PS.applyLook();
   PS.scheduleDecorate();
+  PS.notifyNews();
   PS.ready = true;
   console.log("[pulsantiera] caricata", location.href);
 })();

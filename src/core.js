@@ -186,6 +186,11 @@
     filter: "M3 4h18l-7 8v6l-4 2v-8L3 4z",
     hours: "M12 22a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 9v4l2 2 M10 2h4",
     palette: "M12 22a10 10 0 1 1 0-20c5.5 0 10 4 10 9 0 3-2.5 5-5 5h-2a2 2 0 0 0-1 3.7A2 2 0 0 1 12 22z M7.5 10.5h.01 M12 7.5h.01 M16.5 10.5h.01",
+    search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z M21 21l-5-5",
+    plus: "M12 5v14 M5 12h14",
+    sparkle: "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z",
+    chevronLeft: "M15 18l-6-6 6-6",
+    chevronRight: "M9 18l6-6-6-6",
   };
   const svg = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONS[k]}"/></svg>`;
 
