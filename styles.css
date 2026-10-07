@@ -175,7 +175,7 @@ html[data-ps-ushead="solid"] .o_kanban_group>.ps-usgroup:hover{background:color-
 html[data-ps-ushead="solid"] .ps-usgroup .count{background:color-mix(in srgb,var(--ps-us-fg) 22%,transparent);color:var(--ps-us-fg)}
 html[data-ps-ushead="solid"] .ps-usgroup .dot{box-shadow:0 0 0 2px var(--ps-us-fg)}
 html[data-ps-headers][data-ps-headall] .o_action_manager .o_kanban_view .o_kanban_group>.o_kanban_header{
-  background:var(--ps-head)!important;border-radius:0!important;margin-bottom:8px;
+  background:var(--ps-head)!important;border-radius:0!important;margin-bottom:8px;min-height:var(--ps-head-h,0)!important;
   box-shadow:calc(var(--ps-head-ext,8px) * -1) 0 0 var(--ps-head),var(--ps-head-ext,8px) 0 0 var(--ps-head)!important}
 html[data-ps-headall] .o_kanban_group>.o_kanban_header :is(.o_column_title,.o_kanban_counter,.o_kanban_counter_side,
   .ps-colbtn,.o_kanban_config,.o_kanban_header_title,.o_kanban_quick_add,i,.fa){color:var(--ps-head-fg)!important}

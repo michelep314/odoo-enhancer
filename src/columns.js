@@ -92,6 +92,23 @@
     if (root.style.getPropertyValue("--ps-head-ext") !== ext) root.style.setProperty("--ps-head-ext", ext);
   }
 
+  // intestazioni tutte alte come la più alta: il riepilogo priorità non crea più un gradino nella fascia
+  function equalizeHeads() {
+    const root = document.documentElement;
+    root.style.removeProperty("--ps-head-h");  // misuro l'altezza naturale
+    if (!root.dataset.psHeadall) return;
+    const heads = document.querySelectorAll(".o_kanban_view .o_kanban_group:not(.o_column_folded) > .o_kanban_header");
+    if (heads.length < 2) return;
+    let max = 0;
+    for (const h of heads) max = Math.max(max, h.getBoundingClientRect().height);
+    root.style.setProperty("--ps-head-h", `${Math.ceil(max)}px`);
+  }
+  let resizeTimer = null;
+  addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(equalizeHeads, 150);
+  });
+
   const setOrder = (node, o) => { if (node.style.order !== o) node.style.order = o; };
   const clickOnly = (node, fn) => {
     node.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); fn(); });
@@ -270,6 +287,7 @@
       if (!recs.length && !g.querySelector(".o_kanban_record") && !byGroup.size) continue;
       decorateColumn(g, name, recs);
     }
+    equalizeHeads();
   }
 
   function ensureColBtn(g, name, active) {
@@ -591,10 +609,12 @@
       root.style.setProperty("--ps-head-fg", darkText(hh) ? "#1d2029" : "#fff");
       root.dataset.psHeadall = "1";
       measureHeadExt();
+      equalizeHeads();
     } else if (root.dataset.psHeadall) {
       delete root.dataset.psHeadall;
       root.style.removeProperty("--ps-head");
       root.style.removeProperty("--ps-head-fg");
+      equalizeHeads();
     }
     if (!l.on) { delete root.dataset.psLook; delete root.dataset.psShadow; return; }
     root.dataset.psLook = "1";
