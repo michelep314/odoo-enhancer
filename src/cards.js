@@ -15,7 +15,7 @@
   const TAG_BADGES = false;       // true = sposta in alto anche le altre etichette
   const TAG_FIELDS = ["tag_ids"]; // campi etichetta da spostare in alto
   const HIDE_ORIGINAL_TAGS = true;
-  const US_RE = /^\s*US\s*-?\s*\d+(?:[.,]\d+)*\s*$/i;
+  const US_RE = /^US\s*(?:-\s*)?\d+(?:[.,]\d+)*$/i;  // da applicare al testo già ripulito con trim()
   /* ================================================== */
 
   const COLORS = store("ps-us-colors-v1", {}, (v) => v && typeof v === "object");
@@ -25,7 +25,7 @@
   const usKey = (v) => v.toUpperCase().replace(/\s+/g, "").replace(",", ".");
   const hashColor = (text) => {
     let h = 0;
-    for (const ch of text.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    for (const ch of text.toLowerCase()) h = (h * 31 + ch.codePointAt(0)) >>> 0;
     return (h % 11) + 1;  // colore automatico, stabile per lo stesso testo
   };
   const usColor = (key) => usColors[key] || hashColor(key);
@@ -35,27 +35,33 @@
 
   // Trova la US: prima in un campo testo/relazione della scheda, poi tra le etichette
   let usField = null;
-  function usValue(rec) {
-    const d = rec.data || {}, f = rec.fields || {};
-    if (usField) { const t = recText(rec, usField); if (t && US_RE.test(t)) return t.trim(); }
-    for (const k of Object.keys(d)) {
+  const isUs = (t) => typeof t === "string" && US_RE.test(t.trim());
+  function usFromKnownField(rec) {
+    const t = usField ? recText(rec, usField) : null;
+    return isUs(t) ? t.trim() : null;
+  }
+  function usFromFields(rec) {
+    const f = rec.fields || {};
+    for (const k of Object.keys(rec.data || {})) {
       if (!["char", "many2one", "selection"].includes(f[k]?.type)) continue;
       const t = recText(rec, k);
-      if (t && US_RE.test(t)) {
-        if (usField !== k) console.log("[pulsantiera] US letta dal campo", k);
-        usField = k;
-        return t.trim();
-      }
-    }
-    for (const k of Object.keys(d)) {
-      if (f[k]?.type !== "many2many") continue;
-      for (const r of d[k]?.records || []) {
-        const t = r.data?.display_name || r.data?.name;
-        if (typeof t === "string" && US_RE.test(t)) return t.trim();
-      }
+      if (!isUs(t)) continue;
+      if (usField !== k) console.log("[pulsantiera] US letta dal campo", k);
+      usField = k;
+      return t.trim();
     }
     return null;
   }
+  function usFromTags(rec) {
+    const d = rec.data || {}, f = rec.fields || {};
+    for (const k of Object.keys(d)) {
+      if (f[k]?.type !== "many2many") continue;
+      const hit = (d[k]?.records || []).map((r) => r.data?.display_name || r.data?.name).find(isUs);
+      if (hit) return hit.trim();
+    }
+    return null;
+  }
+  const usValue = (rec) => usFromKnownField(rec) ?? usFromFields(rec) ?? usFromTags(rec);
   // durante un giro di decorate() la US di ogni record si calcola una volta sola
   let usMemo = null;
   const usOf = (rec) => {
@@ -85,6 +91,72 @@
     return card;
   }
 
+  // tinta della scheda con il colore impostato in Odoo
+  function applyTint(card, c, enabled) {
+    const tint = TINT_CARDS && enabled && Number.isInteger(c) && PALETTE[c] ? rgba(PALETTE[c][0], TINT_ALPHA) : null;
+    if (tint) {
+      if (card.style.getPropertyValue("--ps-tint") !== tint) card.style.setProperty("--ps-tint", tint);
+      if (!card.dataset.psTint) card.dataset.psTint = "1";
+    } else if (card.dataset.psTint) {
+      delete card.dataset.psTint;
+      card.style.removeProperty("--ps-tint");
+    }
+  }
+
+  function tagLabels(rec, us) {
+    const out = [];
+    for (const f of TAG_FIELDS) {
+      for (const r of rec.data?.[f]?.records || []) {
+        const text = String(r.data?.display_name || r.data?.name || "").trim();
+        if (!text || text === us) continue;
+        const key = `tag:${r.resModel}:${r.resId}`;
+        out.push({ key, text, ci: tagColor(key, text, r.data?.color), tagModel: r.resModel, tagId: r.resId });
+      }
+    }
+    return out;
+  }
+
+  function cardLabels(rec, ccfg, us) {
+    const labels = [];
+    const pk = ccfg.prio ? prioOf(rec) : null;
+    if (pk) labels.push({ key: "prio:" + pk, text: PRIO[pk].label, ci: prioHex(pk), prio: pk });
+    if (us) labels.push({ key: usKey(us), text: us, ci: usColor(usKey(us)) });
+    if (TAG_BADGES) labels.push(...tagLabels(rec, us));
+    return labels;
+  }
+
+  // etichette in alto nella scheda; restituisce il contenitore, o null se non ce ne sono
+  function renderLabels(card, rec, labels) {
+    let box = card.querySelector(".ps-labels");
+    if (!labels.length) { box?.remove(); return null; }
+    if (!box) {
+      box = el("div", { className: "ps-labels" });
+      badgeContainer(card).prepend(box);
+    }
+    const sig = JSON.stringify(labels.map((l) => [l.key, l.text, l.ci]));
+    if (box.dataset.sig !== sig) {
+      box.dataset.sig = sig;
+      box.replaceChildren(...labels.map((l) => makeChip(l, rec)));
+    }
+    return box;
+  }
+
+  function hideOriginalTags(card, box) {
+    for (const f of TAG_FIELDS) {
+      const w = card.querySelector(`.o_field_widget[name="${f}"]`);
+      if (w && !w.dataset.psHidden && !w.contains(box)) w.dataset.psHidden = "1";
+    }
+  }
+
+  function decorateCard(card, rec, ccfg) {
+    applyTint(card, rec.data?.color, !ccfg.prio);
+    const us = US_BADGE ? usOf(rec) : null;
+    const box = renderLabels(card, rec, cardLabels(rec, ccfg, us));
+    if (!box) return;
+    if (us && HIDE_ORIGINAL_US) hideOriginal(card, us);
+    if (TAG_BADGES && HIDE_ORIGINAL_TAGS) hideOriginalTags(card, box);
+  }
+
   function decorate() {
     if (!getEnv()) return;
     usMemo = new Map();
@@ -96,53 +168,7 @@
         return cfgByGroup.get(g);
       };
       for (const [card, rec] of records) {
-        if (!DECO_MODELS.includes(rec.resModel)) continue;
-        const ccfg = cfgOf(card.closest(".o_kanban_group"));
-
-        const c = rec.data?.color;
-        const tint = TINT_CARDS && !ccfg.prio && Number.isInteger(c) && PALETTE[c] ? rgba(PALETTE[c][0], TINT_ALPHA) : null;
-        if (tint) {
-          if (card.style.getPropertyValue("--ps-tint") !== tint) card.style.setProperty("--ps-tint", tint);
-          if (!card.dataset.psTint) card.dataset.psTint = "1";
-        } else if (card.dataset.psTint) {
-          delete card.dataset.psTint;
-          card.style.removeProperty("--ps-tint");
-        }
-
-        const labels = [];
-        const pk = ccfg.prio ? prioOf(rec) : null;
-        if (pk) labels.push({ key: "prio:" + pk, text: PRIO[pk].label, ci: prioHex(pk), prio: pk });
-        const v = US_BADGE ? usOf(rec) : null;
-        if (v) labels.push({ key: usKey(v), text: v, ci: usColor(usKey(v)) });
-        if (TAG_BADGES) {
-          for (const f of TAG_FIELDS) {
-            for (const r of rec.data?.[f]?.records || []) {
-              const text = String(r.data?.display_name || r.data?.name || "").trim();
-              if (!text || text === v) continue;
-              const key = `tag:${r.resModel}:${r.resId}`;
-              labels.push({ key, text, ci: tagColor(key, text, r.data?.color), tagModel: r.resModel, tagId: r.resId });
-            }
-          }
-        }
-
-        let box = card.querySelector(".ps-labels");
-        if (!labels.length) { box?.remove(); continue; }
-        if (!box) {
-          box = el("div", { className: "ps-labels" });
-          badgeContainer(card).prepend(box);
-        }
-        const sig = JSON.stringify(labels.map((l) => [l.key, l.text, l.ci]));
-        if (box.dataset.sig !== sig) {
-          box.dataset.sig = sig;
-          box.replaceChildren(...labels.map((l) => makeChip(l, rec)));
-        }
-        if (v && HIDE_ORIGINAL_US) hideOriginal(card, v);
-        if (TAG_BADGES && HIDE_ORIGINAL_TAGS) {
-          for (const f of TAG_FIELDS) {
-            const w = card.querySelector(`.o_field_widget[name="${f}"]`);
-            if (w && !w.dataset.psHidden && !w.contains(box)) w.dataset.psHidden = "1";
-          }
-        }
+        if (DECO_MODELS.includes(rec.resModel)) decorateCard(card, rec, cfgOf(card.closest(".o_kanban_group")));
       }
       PS.decorateColumns(records);
     } finally {

@@ -86,7 +86,7 @@
   }
   function parseHours(str) {
     const s = String(str).trim().replace(",", ".");
-    const m = s.match(/^(\d{1,2}):([0-5]\d)$/);
+    const m = /^(\d{1,2}):([0-5]\d)$/.exec(s);
     const h = m ? Number(m[1]) + Number(m[2]) / 60 : Number(s);
     return s && Number.isFinite(h) && h > 0 && h <= 24 ? h : null;
   }
@@ -94,7 +94,7 @@
   /* ---------- Odoo ---------- */
   function evalCtx(env, b = {}) {
     const uid = env.services.user?.userId ?? odoo.__session_info__?.uid;
-    const c = { ...(env.services.user?.context || {}), uid };
+    const c = { ...env.services.user?.context, uid };
     if (b.activeId) Object.assign(c, { active_id: b.activeId, active_ids: [b.activeId] });
     return c;
   }
@@ -188,10 +188,13 @@
     ["#6CC1ED", "Celeste", true], ["#814968", "Viola scuro", false], ["#EB7E7F", "Salmone", true],
     ["#2C8397", "Verde acqua", false], ["#475577", "Blu scuro", false], ["#D6145F", "Fucsia", false],
     ["#30C381", "Verde", true], ["#9365B8", "Viola", false]];
-  const hexRgb = (hex) => { const n = parseInt(hex.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+  const hexRgb = (hex) => { const n = Number.parseInt(hex.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
   const rgba = (hex, a) => `rgba(${hexRgb(hex).join(", ")}, ${a})`;
   const darkText = (hex) => { const [r, g, b] = hexRgb(hex); return 0.299 * r + 0.587 * g + 0.114 * b > 150; };
-  const colorHex = (c) => (typeof c === "number" ? PALETTE[c]?.[0] : typeof c === "string" ? c : null);
+  const colorHex = (c) => {
+    if (typeof c === "number") return PALETTE[c]?.[0];
+    return typeof c === "string" ? c : null;
+  };
 
   // Priorità dei bug ricavata dal colore della scheda in Odoo.
   // colors = indici della tavolozza che valgono quella priorità; il primo è quello scritto quando la si sceglie.
@@ -207,12 +210,12 @@
   };
   const PRIO_STORE = store("ps-prio-v1", PRIO_DEFAULTS, (v) => v && typeof v === "object");
   const PRIO = {};
+  const validColors = (cs) => Array.isArray(cs) && cs.length > 0 && cs.every((c) => Number.isInteger(c) && PALETTE[c]);
   function loadPrio(saved) {
     for (const k of PRIO_ORDER) {
       const s = saved[k] || {}, d = PRIO_DEFAULTS[k];
-      const colors = k === "none" ? [0]
-          : Array.isArray(s.colors) && s.colors.length && s.colors.every((c) => Number.isInteger(c) && PALETTE[c])
-              ? [...s.colors] : [...d.colors];
+      let colors = [0];
+      if (k !== "none") colors = validColors(s.colors) ? [...s.colors] : [...d.colors];
       PRIO[k] = {
         ...PRIO_FIXED[k],
         label: typeof s.label === "string" && s.label.trim() ? s.label.trim() : d.label,
@@ -233,8 +236,12 @@
     const c = rec.data?.color || 0;
     return PRIO_ORDER.find((k) => PRIO[k].colors.includes(c)) || null;  // altri colori: nessuna priorità riconosciuta
   };
-  const barsSvg = (k) => `<svg viewBox="0 0 12 12" aria-hidden="true">${[0, 1, 2].map((i) =>
-      `<rect x="${i * 4 + 0.5}" y="${8 - i * 3}" width="3" height="${4 + i * 3}" rx="0.8" fill="currentColor" opacity="${i < PRIO[k].bars ? 1 : 0.28}"/>`).join("")}</svg>`;
+  const barRect = (i, on) =>
+    `<rect x="${i * 4 + 0.5}" y="${8 - i * 3}" width="3" height="${4 + i * 3}" rx="0.8" fill="currentColor" opacity="${on ? 1 : 0.28}"/>`;
+  const barsSvg = (k) => {
+    const bars = [0, 1, 2].map((i) => barRect(i, i < PRIO[k].bars)).join("");
+    return `<svg viewBox="0 0 12 12" aria-hidden="true">${bars}</svg>`;
+  };
   function prioButton(k, on) {
     const b = el("button", { type: "button", className: `ps-prio ps-prio-${k}${on ? " on" : ""}` });
     b.style.setProperty("--pc", prioHex(k));

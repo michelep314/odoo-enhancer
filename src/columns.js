@@ -19,7 +19,7 @@
     },
     look: { on: true, radius: 10, colRadius: 12, gap: 8, shadow: true },
   };
-  const STORE = store("ps-cols-v1", COLS_DEFAULT, (v) => v && v.cols && v.look);
+  const STORE = store("ps-cols-v1", COLS_DEFAULT, (v) => v?.cols && v.look);
   const colCfg = STORE.load();
   const saveCols = () => STORE.save(colCfg);
   const colFilters = {};    // filtri attivi, per colonna (fino al ricaricamento della pagina)
@@ -28,7 +28,7 @@
   const colName = (g) => (g && !g.classList.contains("o_column_folded")
       ? g.querySelector(".o_column_title")?.textContent.trim() || null : null);
   const colSettings = (name) => {
-    const r = { ...(colCfg.cols["*"] || {}), ...((name && colCfg.cols[name.toLowerCase()]) || {}) };
+    const r = { ...colCfg.cols["*"], ...(name && colCfg.cols[name.toLowerCase()]) };
     if (r.prio === undefined) r.prio = !!name && /bug/i.test(name);  // colonne "bug": priorità attiva di default
     return r;
   };
@@ -76,7 +76,7 @@
   const prioOk = (rec, f) => !f?.prio || (prioOf(rec) || "none") === f.prio;
   const matchFilter = (rec, f) => usOk(rec, f) && tagOk(rec, f) && prioOk(rec, f);
   const setColFilter = (lname, patch) => {
-    const nf = { ...(colFilters[lname] || {}), ...patch };
+    const nf = { ...colFilters[lname], ...patch };
     if (!nf.us && !nf.tag && !nf.prio) delete colFilters[lname]; else colFilters[lname] = nf;
   };
 
@@ -93,17 +93,23 @@
   }
 
   const setOrder = (node, o) => { if (node.style.order !== o) node.style.order = o; };
-  const setCollapsed = (card, on) => {
-    if (on) { if (!card.dataset.psCollapsed) card.dataset.psCollapsed = "1"; }
-    else if (card.dataset.psCollapsed) delete card.dataset.psCollapsed;
+  // attributo data-* booleano, scritto solo quando cambia
+  const setFlag = (node, key, on) => {
+    if (on) { if (!node.dataset[key]) node.dataset[key] = "1"; }
+    else if (node.dataset[key]) delete node.dataset[key];
   };
   const clickOnly = (node, fn) => {
     node.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); fn(); });
     return isolate(node);
   };
+  const prioCounts = (recs) => {
+    const counts = { high: 0, medium: 0, low: 0, none: 0 };
+    for (const [, r] of recs) counts[prioOf(r) || "none"]++;
+    return counts;
+  };
+  const rankFn = (prioSort) => (rec) => (prioSort ? PRIO[prioOf(rec) || "none"].rank : 0);
 
-  function decorateColumns(records) {
-    if (document.documentElement.dataset.psHeadall) measureHeadExt();
+  function groupByColumn(records) {
     const byGroup = new Map();
     for (const [card, rec] of records) {
       const g = card.closest(".o_kanban_group");
@@ -111,123 +117,149 @@
       if (!byGroup.has(g)) byGroup.set(g, []);
       byGroup.get(g).push([card, rec]);
     }
+    return byGroup;
+  }
+
+  // campi nascosti + filtro
+  function applyHideAndFilter(recs, cfg, flt) {
+    for (const [card, rec] of recs) {
+      hideTexts(card, (cfg.hide || []).map((f) => recText(rec, f)).filter(Boolean));
+      setFlag(card, "psFiltered", !!flt && !matchFilter(rec, flt));
+    }
+  }
+
+  function prioDot(k, n, lname, on) {
+    const b = el("button", { type: "button", className: `ps-prio-dot ps-prio-${k}${on ? " on" : ""}`,
+      title: `${PRIO[k].label}: ${n} (clic per filtrare)` }, el("span", { className: "d" }), String(n));
+    b.style.setProperty("--pc", prioHex(k));
+    b.setAttribute("aria-pressed", String(on));
+    return clickOnly(b, () => {
+      setColFilter(lname, { prio: colFilters[lname]?.prio === k ? null : k });
+      PS.decorate();
+    });
+  }
+
+  // riepilogo priorità nell'intestazione (clic = filtro)
+  function renderPrioSummary(g, cfg, lname, recs) {
+    const head = g.querySelector(":scope > .o_kanban_header");
+    let sum = head?.querySelector(".ps-prio-sum");
+    if (!cfg.prio || !head) { sum?.remove(); return; }
+    const counts = prioCounts(recs);
+    if (!sum) {
+      sum = isolate(el("div", { className: "ps-prio-sum" }));
+      head.append(sum);
+    }
+    const active = colFilters[lname]?.prio || "";
+    const sig = JSON.stringify([counts, active, prioSig()]);
+    if (sum.dataset.sig === sig) return;
+    sum.dataset.sig = sig;
+    sum.replaceChildren(...PRIO_ORDER.filter((k) => counts[k]).map((k) => prioDot(k, counts[k], lname, active === k)));
+  }
+
+  // [chiave US, { label, items }] in ordine naturale, con "Senza US" in fondo
+  function usGroups(recs) {
+    const groups = new Map();
+    const none = { label: "Senza US", items: [] };
+    for (const item of recs) {
+      const v = usOf(item[1]);
+      if (!v) { none.items.push(item); continue; }
+      const k = usKey(v);
+      if (!groups.has(k)) groups.set(k, { label: v, items: [] });
+      groups.get(k).items.push(item);
+    }
+    const list = [...groups].sort((a, b) => natCmp(a[0], b[0]));
+    if (none.items.length && list.length) list.push(["__none", none]);
+    return list;
+  }
+
+  function createUsSep(g, k, closed) {
+    const sep = clickOnly(el("button", { type: "button", className: "ps-usgroup" }), () => {
+      if (closed.has(k)) closed.delete(k); else closed.add(k);
+      PS.decorate();
+    });
+    sep.dataset.key = k;
+    g.append(sep);
+    return sep;
+  }
+
+  function paintUsSep(sep, k, gr, visible, isClosed) {
+    const total = gr.items.length;
+    const ci = k === "__none" ? null : usColor(k);
+    const hex = ci ? PALETTE[ci][0] : "#8d90a0";
+    const fg = !ci || PALETTE[ci][2] ? "#1d2029" : "#fff";
+    const sig = JSON.stringify([gr.label, visible, total, isClosed, hex]);
+    if (sep.dataset.sig === sig) return;
+    sep.dataset.sig = sig;
+    sep.style.setProperty("--ps-us-c", hex);
+    sep.style.setProperty("--ps-us-fg", fg);
+    sep.setAttribute("aria-expanded", String(!isClosed));
+    sep.title = isClosed ? "Clic per mostrare le schede" : "Clic per nascondere le schede";
+    sep.replaceChildren(
+        el("span", { className: "chev", textContent: isClosed ? "▸" : "▾" }),
+        el("span", { className: "name", textContent: gr.label }),
+        el("span", { className: "count", textContent: visible === total ? String(visible) : `${visible}/${total}` }));
+  }
+
+  function sortByUs(g, lname, recs, rankOf, seps) {
+    const list = usGroups(recs);
+    const closed = colCollapsed[lname] || (colCollapsed[lname] = new Set());
+    const sepByKey = new Map(seps.map((s) => [s.dataset.key, s]));
+    list.forEach(([k, gr], i) => {
+      const sep = sepByKey.get(k) || createUsSep(g, k, closed);
+      const visible = gr.items.filter(([c]) => !c.dataset.psFiltered).length;
+      const isClosed = closed.has(k);
+      paintUsSep(sep, k, gr, visible, isClosed);
+      setOrder(sep, String(i * 10));
+      sep.hidden = visible === 0;
+      for (const [c, r] of gr.items) {
+        setOrder(c, String(i * 10 + 1 + rankOf(r)));
+        setFlag(c, "psCollapsed", isClosed);
+      }
+    });
+    if (!list.length) for (const [card, rec] of recs) setOrder(card, String(rankOf(rec)));
+    const seen = new Set(list.map(([k]) => k));
+    for (const sep of seps) if (!seen.has(sep.dataset.key)) sep.remove();
+  }
+
+  // ordine: gruppi per US e/o priorità (alta → bassa)
+  function applyOrder(g, cfg, lname, recs) {
+    const prioSort = !!(cfg.prio && cfg.prioSort);
+    const rankOf = rankFn(prioSort);
+    const seps = [...g.querySelectorAll(":scope > .ps-usgroup")];
+    if (cfg.groupUs) {
+      setFlag(g, "psSort", true);
+      sortByUs(g, lname, recs, rankOf, seps);
+    } else if (prioSort) {
+      setFlag(g, "psSort", true);
+      for (const sep of seps) sep.remove();
+      for (const [card, rec] of recs) {
+        setOrder(card, String(rankOf(rec)));
+        setFlag(card, "psCollapsed", false);
+      }
+    } else if (g.dataset.psSort) {
+      delete g.dataset.psSort;
+      for (const [card] of recs) { card.style.removeProperty("order"); delete card.dataset.psCollapsed; }
+      for (const sep of seps) sep.remove();
+    }
+  }
+
+  function decorateColumn(g, name, recs) {
+    const lname = name.toLowerCase(), cfg = colSettings(name);
+    ensureColBtn(g, name, !!colFilters[lname] || !!cfg.groupUs);
+    applyHideAndFilter(recs, cfg, colFilters[lname]);
+    renderPrioSummary(g, cfg, lname, recs);
+    applyOrder(g, cfg, lname, recs);
+  }
+
+  function decorateColumns(records) {
+    if (document.documentElement.dataset.psHeadall) measureHeadExt();
+    const byGroup = groupByColumn(records);
     for (const g of document.querySelectorAll(".o_kanban_group")) {
       const name = colName(g);
       if (!name) continue;
-      const lname = name.toLowerCase(), cfg = colSettings(name), recs = byGroup.get(g) || [];
+      const recs = byGroup.get(g) || [];
       if (!recs.length && !g.querySelector(".o_kanban_record") && !byGroup.size) continue;
-
-      ensureColBtn(g, name, !!colFilters[lname] || !!cfg.groupUs);
-
-      // campi nascosti + filtro
-      const flt = colFilters[lname];
-      for (const [card, rec] of recs) {
-        hideTexts(card, (cfg.hide || []).map((f) => recText(rec, f)).filter(Boolean));
-        const show = !flt || matchFilter(rec, flt);
-        if (show) { if (card.dataset.psFiltered) delete card.dataset.psFiltered; }
-        else if (!card.dataset.psFiltered) card.dataset.psFiltered = "1";
-      }
-
-      // riepilogo priorità nell'intestazione (clic = filtro)
-      const head = g.querySelector(":scope > .o_kanban_header");
-      let sum = head?.querySelector(".ps-prio-sum");
-      if (cfg.prio && head) {
-        const counts = { high: 0, medium: 0, low: 0, none: 0 };
-        for (const [, r] of recs) counts[prioOf(r) || "none"]++;
-        if (!sum) {
-          sum = isolate(el("div", { className: "ps-prio-sum" }));
-          head.append(sum);
-        }
-        const active = colFilters[lname]?.prio || "";
-        const sig = JSON.stringify([counts, active, prioSig()]);
-        if (sum.dataset.sig !== sig) {
-          sum.dataset.sig = sig;
-          sum.replaceChildren(...PRIO_ORDER.filter((k) => counts[k]).map((k) => {
-            const b = el("button", { type: "button", className: `ps-prio-dot ps-prio-${k}${active === k ? " on" : ""}`,
-              title: `${PRIO[k].label}: ${counts[k]} (clic per filtrare)` }, el("span", { className: "d" }), String(counts[k]));
-            b.style.setProperty("--pc", prioHex(k));
-            b.setAttribute("aria-pressed", String(active === k));
-            b.addEventListener("click", (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setColFilter(lname, { prio: colFilters[lname]?.prio === k ? null : k });
-              PS.decorate();
-            });
-            return b;
-          }));
-        }
-      } else sum?.remove();
-
-      // ordine: gruppi per US e/o priorità (alta → bassa)
-      const prioSort = cfg.prio && cfg.prioSort;
-      const rankOf = (rec) => (prioSort ? PRIO[prioOf(rec) || "none"].rank : 0);
-      const seps = g.querySelectorAll(":scope > .ps-usgroup");
-      if (cfg.groupUs) {
-        if (!g.dataset.psSort) g.dataset.psSort = "1";
-        const groups = new Map();
-        const none = { label: "Senza US", items: [] };
-        for (const [card, rec] of recs) {
-          const v = usOf(rec);
-          if (!v) { none.items.push([card, rec]); continue; }
-          const k = usKey(v);
-          if (!groups.has(k)) groups.set(k, { label: v, items: [] });
-          groups.get(k).items.push([card, rec]);
-        }
-        const list = [...groups].sort((a, b) => natCmp(a[0], b[0]));
-        if (none.items.length && list.length) list.push(["__none", none]);
-        const closed = colCollapsed[lname] || (colCollapsed[lname] = new Set());
-        const sepByKey = new Map([...seps].map((s) => [s.dataset.key, s]));
-        const seen = new Set();
-        list.forEach(([k, gr], i) => {
-          seen.add(k);
-          let sep = sepByKey.get(k);
-          if (!sep) {
-            sep = clickOnly(el("button", { type: "button", className: "ps-usgroup" }), () => {
-              if (closed.has(k)) closed.delete(k); else closed.add(k);
-              PS.decorate();
-            });
-            sep.dataset.key = k;
-            g.append(sep);
-          }
-          const total = gr.items.length;
-          const visible = gr.items.filter(([c]) => !c.dataset.psFiltered).length;
-          const isClosed = closed.has(k);
-          const ci = k === "__none" ? null : usColor(k);
-          const hex = ci ? PALETTE[ci][0] : "#8d90a0";
-          const fg = !ci || PALETTE[ci][2] ? "#1d2029" : "#fff";
-          const sig = JSON.stringify([gr.label, visible, total, isClosed, hex]);
-          if (sep.dataset.sig !== sig) {
-            sep.dataset.sig = sig;
-            sep.style.setProperty("--ps-us-c", hex);
-            sep.style.setProperty("--ps-us-fg", fg);
-            sep.setAttribute("aria-expanded", String(!isClosed));
-            sep.title = isClosed ? "Clic per mostrare le schede" : "Clic per nascondere le schede";
-            sep.replaceChildren(
-                el("span", { className: "chev", textContent: isClosed ? "▸" : "▾" }),
-                el("span", { className: "name", textContent: gr.label }),
-                el("span", { className: "count", textContent: visible === total ? String(visible) : `${visible}/${total}` }));
-          }
-          setOrder(sep, String(i * 10));
-          sep.hidden = visible === 0;
-          for (const [c, r] of gr.items) {
-            setOrder(c, String(i * 10 + 1 + rankOf(r)));
-            setCollapsed(c, isClosed);
-          }
-        });
-        if (!list.length) for (const [card, rec] of recs) setOrder(card, String(rankOf(rec)));
-        for (const sep of seps) if (!seen.has(sep.dataset.key)) sep.remove();
-      } else if (prioSort) {
-        if (!g.dataset.psSort) g.dataset.psSort = "1";
-        for (const sep of seps) sep.remove();
-        for (const [card, rec] of recs) {
-          setOrder(card, String(rankOf(rec)));
-          setCollapsed(card, false);
-        }
-      } else if (g.dataset.psSort) {
-        delete g.dataset.psSort;
-        for (const [card] of recs) { card.style.removeProperty("order"); delete card.dataset.psCollapsed; }
-        for (const sep of seps) sep.remove();
-      }
+      decorateColumn(g, name, recs);
     }
   }
 
@@ -278,6 +310,27 @@
     return true;
   }
 
+  // stato di un colore nell'editor della priorità k: classe del pulsante e suggerimento
+  function swatchState(k, c, nm) {
+    const pos = PRIO[k].colors.indexOf(c);
+    if (pos === 0) return { className: "on main", title: `${nm}: colore usato quando scegli "${PRIO[k].label}" (clic per toglierlo)` };
+    if (pos > 0) return { className: "on", title: `${nm}: vale anche come "${PRIO[k].label}" (clic per renderlo principale)` };
+    const owner = PRIO_ORDER.find((o) => o !== k && PRIO[o].colors.includes(c));
+    if (owner) return { className: "taken", title: `${nm}: ora vale "${PRIO[owner].label}" (clic per spostarlo qui)` };
+    return { className: "", title: `${nm}: clic per aggiungerlo` };
+  }
+
+  function prioSwatches(k, commit) {
+    if (k === "none") return el("p", { className: "hint", textContent: "Schede senza colore." });
+    return el("div", { className: "sw" }, ...PALETTE.slice(1).map(([hx, nm], i) => {
+      const c = i + 1;
+      const b = el("button", { type: "button", ...swatchState(k, c, nm),
+        onclick: () => { if (cyclePrioColor(k, c)) commit(); } });
+      b.style.background = hx;
+      return b;
+    }));
+  }
+
   function prioEditor(onChange) {
     const commit = () => { savePrio(); onChange(); };
     const rows = PRIO_ORDER.map((k) => {
@@ -289,23 +342,7 @@
         const v = name.value.trim();
         if (v && v !== PRIO[k].label) { PRIO[k].label = v; commit(); } else name.value = PRIO[k].label;
       };
-      const colors = k === "none"
-          ? el("p", { className: "hint", textContent: "Schede senza colore." })
-          : el("div", { className: "sw" }, ...PALETTE.slice(1).map(([hx, nm], i) => {
-            const c = i + 1, pos = PRIO[k].colors.indexOf(c);
-            const owner = PRIO_ORDER.find((o) => o !== k && PRIO[o].colors.includes(c));
-            const b = el("button", {
-              type: "button",
-              className: pos === 0 ? "on main" : pos > 0 ? "on" : owner ? "taken" : "",
-              title: pos === 0 ? `${nm}: colore usato quando scegli "${PRIO[k].label}" (clic per toglierlo)`
-                  : pos > 0 ? `${nm}: vale anche come "${PRIO[k].label}" (clic per renderlo principale)`
-                      : owner ? `${nm}: ora vale "${PRIO[owner].label}" (clic per spostarlo qui)`
-                          : `${nm}: clic per aggiungerlo`,
-              onclick: () => { if (cyclePrioColor(k, c)) commit(); },
-            });
-            b.style.background = hx;
-            return b;
-          }));
+      const colors = prioSwatches(k, commit);
       return el("div", { className: "prio-row" }, el("div", { className: "prio-head" }, preview, name), colors);
     });
     return [
@@ -314,6 +351,156 @@
       el("div", { className: "acts tight" }, el("button", { type: "button", textContent: "Ripristina priorità predefinite",
         onclick: () => { if (confirm("Ripristinare nomi e colori predefiniti delle priorità?")) { resetPrio(); onChange(); } } })),
     ];
+  }
+
+  /* sezioni del popover della colonna */
+  const toggled = (list, k, add) => {
+    const set = new Set(list || []);
+    if (add) set.add(k); else set.delete(k);
+    return [...set];
+  };
+  const scopeCfg = (scope, name) => (scope === "*" ? colCfg.cols["*"] || {} : colSettings(name));
+  function editColCfg(scope, name, fn) {
+    if (scope !== "*" && !colCfg.cols[scope]) colCfg.cols[scope] = structuredClone(colSettings(name));
+    fn(colCfg.cols[scope] || (colCfg.cols[scope] = {}));
+    saveCols();
+  }
+
+  // options = [[valore, testo]]; onPick riceve il valore scelto o null per "tutte"
+  function filterSelect(title, allLabel, options, value, onPick) {
+    const sel = el("select", { title },
+        el("option", { value: "", textContent: allLabel }),
+        ...options.map(([v, text]) => el("option", { value: v, textContent: text })));
+    sel.value = value || "";
+    sel.onchange = () => onPick(sel.value || null);
+    return sel;
+  }
+
+  function usSelect(recs, fl, setFilter) {
+    const counts = new Map();
+    let noUs = 0, tot = 0;
+    for (const [, r] of recs) {
+      if (!tagOk(r, fl)) continue;
+      tot++;
+      const v = usOf(r);
+      if (!v) { noUs++; continue; }
+      const k = usKey(v);
+      counts.set(k, [v, (counts.get(k)?.[1] || 0) + 1]);
+    }
+    if (fl.us && fl.us !== "__none" && !counts.has(fl.us)) counts.set(fl.us, [fl.us, 0]);
+    const options = [...counts].sort((a, b) => natCmp(a[0], b[0])).map(([k, [v, n]]) => [k, `${v} (${n})`]);
+    if (noUs || fl.us === "__none") options.push(["__none", `Senza US (${noUs})`]);
+    return filterSelect("User story", `Tutte le US (${tot})`, options, fl.us, (us) => setFilter({ us }));
+  }
+
+  function tagSelect(recs, fl, setFilter) {
+    const counts = new Map();
+    let tot = 0;
+    for (const [, r] of recs) {
+      if (!usOk(r, fl)) continue;
+      tot++;
+      for (const t of tagNames(r)) counts.set(t, (counts.get(t) || 0) + 1);
+    }
+    if (fl.tag && !counts.has(fl.tag)) counts.set(fl.tag, 0);
+    const options = [...counts].sort((a, b) => a[0].localeCompare(b[0])).map(([t, n]) => [t, `${t} (${n})`]);
+    return filterSelect("Etichetta", `Tutte le etichette (${tot})`, options, fl.tag, (tag) => setFilter({ tag }));
+  }
+
+  function prioSelect(recs, fl, setFilter) {
+    const sub = recs.filter(([, r]) => usOk(r, fl) && tagOk(r, fl));
+    const pc = prioCounts(sub);
+    const options = PRIO_ORDER.map((k) => [k, `${PRIO[k].label} (${pc[k]})`]);
+    return filterSelect("Priorità", `Tutte le priorità (${sub.length})`, options, fl.prio, (prio) => setFilter({ prio }));
+  }
+
+  // filtro: US, etichetta e priorità insieme (solo questa colonna, temporaneo)
+  function filterSection(recs, active, withPrio, setFilter, clear) {
+    const fl = active || {};
+    const shown = recs.filter(([, r]) => matchFilter(r, fl)).length;
+    const hint = active ? `Visibili ${shown} di ${recs.length} schede.` : "Puoi combinare user story ed etichetta.";
+    return [
+      el("label", { className: "lbl", textContent: "Filtra le schede (temporaneo)" }),
+      el("div", { className: "fl" }, usSelect(recs, fl, setFilter), tagSelect(recs, fl, setFilter)),
+      withPrio ? el("div", { className: "fl one" }, prioSelect(recs, fl, setFilter)) : null,
+      el("p", { className: "hint", textContent: hint }),
+      active ? el("div", { className: "acts tight" },
+          el("button", { type: "button", textContent: "Azzera filtri", onclick: clear })) : null,
+    ];
+  }
+
+  function prioSettings(cur, edit, open, onToggle, refresh) {
+    if (!cur.prio) return [];
+    return [
+      chk("Ordina per priorità (alta → bassa)", !!cur.prioSort, (v) => edit((c) => { c.prioSort = v; })),
+      el("p", { className: "hint", textContent: prioLegend() }),
+      el("div", { className: "acts tight" }, el("button", {
+        type: "button", textContent: open ? "Chiudi personalizzazione priorità" : "Personalizza priorità…",
+        ariaExpanded: String(open), onclick: onToggle,
+      })),
+      open ? el("div", { className: "prio-edit" }, ...prioEditor(refresh)) : null,
+    ];
+  }
+
+  // colore della fascia intestazioni (vale per tutte le colonne)
+  function headerColorSection(setHead) {
+    const header = colCfg.look.header;
+    const sw = el("div", { className: "sw" },
+        el("button", { type: "button", className: header == null ? "on none" : "none", title: "Nessun colore", textContent: "∅",
+          onclick: () => setHead(null) }),
+        ...PALETTE.slice(1).map(([hx, nm], i) => {
+          const b = el("button", { type: "button", title: nm, className: header === i + 1 ? "on" : "",
+            onclick: () => setHead(i + 1) });
+          b.style.background = hx;
+          return b;
+        }));
+    const custom = el("input", { type: "color", value: colorHex(header) || "#714b67", title: "Colore personalizzato" });
+    custom.onchange = () => setHead(custom.value);
+    return [
+      el("label", { className: "lbl", textContent: "Colore intestazioni (fascia su tutte le colonne)" }),
+      el("div", { className: "inline" }, sw, custom),
+    ];
+  }
+
+  // campi testo/relazione presenti nelle schede della colonna, più quelli già nascosti
+  function hideCandidates(recs, hidden) {
+    const usField = PS.usFieldName();
+    const cand = new Map();
+    for (const [, r] of recs) {
+      for (const k of Object.keys(r.data || {})) {
+        if (k === "name" || k === usField || !["many2one", "char"].includes(r.fields?.[k]?.type)) continue;
+        if (recText(r, k)) cand.set(k, r.fields[k].string || k);
+      }
+    }
+    for (const k of hidden) if (!cand.has(k)) cand.set(k, k);
+    return [...cand].sort((a, b) => a[1].localeCompare(b[1]));
+  }
+
+  function hideSection(recs, cur, editToggle) {
+    const hidden = cur.hide || [];
+    const list = hideCandidates(recs, hidden).map(([k, label]) =>
+        chk(label, hidden.includes(k), (v) => editToggle("hide", k, v)));
+    return [
+      el("label", { className: "lbl", textContent: "Nascondi nelle schede" }),
+      list.length ? el("div", { className: "list" }, ...list)
+          : el("p", { className: "hint", textContent: "Nessun campo testuale da nascondere in questa colonna." }),
+    ];
+  }
+
+  // azioni della modifica rapida
+  function qeSection(cur, editToggle) {
+    const hidden = cur.qeHidden || [];
+    const list = Object.entries(QE_LABELS).map(([k, label]) =>
+        chk(label, !hidden.includes(k), (v) => editToggle("qeHidden", k, !v)));
+    return [
+      el("label", { className: "lbl", textContent: "Azioni della modifica rapida" }),
+      el("div", { className: "list two" }, ...list),
+    ];
+  }
+
+  function resetScopeButton(scope, refresh) {
+    if (scope === "*" || !colCfg.cols[scope]) return null;
+    return el("button", { type: "button", textContent: "Usa impostazioni generali",
+      onclick: () => { delete colCfg.cols[scope]; saveCols(); refresh(); } });
   }
 
   /* popover della colonna */
@@ -335,99 +522,14 @@
 
     function draw() {
       const recs = kanbanRecords().filter(([c, r]) => c.closest(".o_kanban_group") === g && DECO_MODELS.includes(r.resModel));
-      const cur = scope === "*" ? (colCfg.cols["*"] || {}) : colSettings(name);
+      const cur = scopeCfg(scope, name);
       const refresh = () => { PS.decorate(); draw(); };
-      const edit = (fn) => {
-        if (scope !== "*" && !colCfg.cols[scope]) colCfg.cols[scope] = structuredClone(colSettings(name));
-        fn(colCfg.cols[scope] || (colCfg.cols[scope] = {}));
-        saveCols();
-        refresh();
-      };
-
-      /* filtro: US ed etichetta insieme (solo questa colonna, temporaneo) */
-      const fl = colFilters[lname] || {};
-      const usCount = new Map(), tagCount = new Map();
-      let noUs = 0, usTot = 0, tagTot = 0;
-      for (const [, r] of recs) {
-        if (tagOk(r, fl)) {
-          usTot++;
-          const v = usOf(r);
-          if (v) { const k = usKey(v); usCount.set(k, [v, (usCount.get(k)?.[1] || 0) + 1]); } else noUs++;
-        }
-        if (usOk(r, fl)) {
-          tagTot++;
-          for (const t of tagNames(r)) tagCount.set(t, (tagCount.get(t) || 0) + 1);
-        }
-      }
-      if (fl.us && fl.us !== "__none" && !usCount.has(fl.us)) usCount.set(fl.us, [fl.us, 0]);
-      if (fl.tag && !tagCount.has(fl.tag)) tagCount.set(fl.tag, 0);
+      const edit = (fn) => { editColCfg(scope, name, fn); refresh(); };
+      const editToggle = (prop, k, add) => edit((c) => { c[prop] = toggled(c[prop], k, add); });
       const setFilter = (patch) => { setColFilter(lname, patch); refresh(); };
-      const usSel = el("select", { title: "User story" },
-          el("option", { value: "", textContent: `Tutte le US (${usTot})` }),
-          ...[...usCount].sort((a, b) => natCmp(a[0], b[0])).map(([k, [v, n]]) =>
-              el("option", { value: k, textContent: `${v} (${n})` })),
-          noUs || fl.us === "__none" ? el("option", { value: "__none", textContent: `Senza US (${noUs})` }) : null);
-      usSel.value = fl.us || "";
-      usSel.onchange = () => setFilter({ us: usSel.value || null });
-      const tagSel = el("select", { title: "Etichetta" },
-          el("option", { value: "", textContent: `Tutte le etichette (${tagTot})` }),
-          ...[...tagCount].sort((a, b) => a[0].localeCompare(b[0])).map(([t, n]) =>
-              el("option", { value: t, textContent: `${t} (${n})` })));
-      tagSel.value = fl.tag || "";
-      tagSel.onchange = () => setFilter({ tag: tagSel.value || null });
-      const shown = recs.filter(([, r]) => matchFilter(r, fl)).length;
-      let prioSel = null;
-      if (colSettings(name).prio) {
-        const pc = { high: 0, medium: 0, low: 0, none: 0 };
-        let pTot = 0;
-        for (const [, r] of recs) if (usOk(r, fl) && tagOk(r, fl)) { pTot++; pc[prioOf(r) || "none"]++; }
-        prioSel = el("select", { title: "Priorità" },
-            el("option", { value: "", textContent: `Tutte le priorità (${pTot})` }),
-            ...PRIO_ORDER.map((k) => el("option", { value: k, textContent: `${PRIO[k].label} (${pc[k]})` })));
-        prioSel.value = fl.prio || "";
-        prioSel.onchange = () => setFilter({ prio: prioSel.value || null });
-      }
-
-      /* colore della fascia intestazioni (vale per tutte le colonne) */
-      const look = colCfg.look;
-      const setHead = (v) => { look.header = v; saveCols(); applyLook(); refresh(); };
-      const curHex = colorHex(look.header);
-      const sw = el("div", { className: "sw" },
-          el("button", { type: "button", className: look.header == null ? "on none" : "none", title: "Nessun colore", textContent: "∅",
-            onclick: () => setHead(null) }),
-          ...PALETTE.slice(1).map(([hx, nm], i) => {
-            const b = el("button", { type: "button", title: nm, className: look.header === i + 1 ? "on" : "",
-              onclick: () => setHead(i + 1) });
-            b.style.background = hx;
-            return b;
-          }));
-      const custom = el("input", { type: "color", value: curHex || "#714b67", title: "Colore personalizzato" });
-      custom.onchange = () => setHead(custom.value);
-
-      /* campi nascosti: campi testo/relazione presenti nelle schede di questa colonna */
-      const usField = PS.usFieldName();
-      const cand = new Map();
-      for (const [, r] of recs) {
-        for (const k of Object.keys(r.data || {})) {
-          if (k === "name" || k === usField || !["many2one", "char"].includes(r.fields?.[k]?.type)) continue;
-          if (recText(r, k)) cand.set(k, r.fields[k].string || k);
-        }
-      }
-      for (const k of cur.hide || []) if (!cand.has(k)) cand.set(k, k);
-      const hideList = [...cand].sort((a, b) => a[1].localeCompare(b[1])).map(([k, label]) =>
-          chk(label, (cur.hide || []).includes(k), (v) => edit((c) => {
-            const set = new Set(c.hide || []);
-            if (v) set.add(k); else set.delete(k);
-            c.hide = [...set];
-          })));
-
-      /* azioni della modifica rapida */
-      const qeList = Object.entries(QE_LABELS).map(([k, label]) =>
-          chk(label, !(cur.qeHidden || []).includes(k), (v) => edit((c) => {
-            const set = new Set(c.qeHidden || []);
-            if (v) set.delete(k); else set.add(k);
-            c.qeHidden = [...set];
-          })));
+      const clearFilter = () => { delete colFilters[lname]; refresh(); };
+      const setHead = (v) => { colCfg.look.header = v; saveCols(); applyLook(); refresh(); };
+      const togglePrio = () => { prioOpen = !prioOpen; draw(); };
 
       const scopeSel = el("select", {},
           el("option", { value: lname, textContent: `Solo la colonna "${name}"` }),
@@ -435,39 +537,20 @@
       scopeSel.value = scope;
       scopeSel.onchange = () => { scope = scopeSel.value; draw(); };
 
-      pop.replaceChildren(
-          el("h4", { textContent: name }),
-          el("label", { className: "lbl", textContent: "Filtra le schede (temporaneo)" }),
-          el("div", { className: "fl" }, usSel, tagSel),
-          prioSel ? el("div", { className: "fl one" }, prioSel) : null,
-          el("p", { className: "hint", textContent: colFilters[lname]
-                ? `Visibili ${shown} di ${recs.length} schede.` : "Puoi combinare user story ed etichetta." }),
-          colFilters[lname] ? el("div", { className: "acts tight" }, el("button", { type: "button", textContent: "Azzera filtri",
-            onclick: () => { delete colFilters[lname]; refresh(); } })) : null,
-          el("h4", { className: "sep", textContent: "Impostazioni" }),
-          scopeSel,
-          chk("Raggruppa per user story", !!cur.groupUs, (v) => edit((c) => { c.groupUs = v; })),
-          chk("Priorità dal colore della scheda", !!cur.prio, (v) => edit((c) => { c.prio = v; })),
-          cur.prio ? chk("Ordina per priorità (alta → bassa)", !!cur.prioSort, (v) => edit((c) => { c.prioSort = v; })) : null,
-          cur.prio ? el("p", { className: "hint", textContent: prioLegend() }) : null,
-          cur.prio ? el("div", { className: "acts tight" }, el("button", {
-            type: "button", textContent: prioOpen ? "Chiudi personalizzazione priorità" : "Personalizza priorità…",
-            ariaExpanded: String(prioOpen), onclick: () => { prioOpen = !prioOpen; draw(); },
-          })) : null,
-          ...(cur.prio && prioOpen ? [el("div", { className: "prio-edit" }, ...prioEditor(refresh))] : []),
-          el("label", { className: "lbl", textContent: "Colore intestazioni (fascia su tutte le colonne)" }),
-          el("div", { className: "inline" }, sw, custom),
-          el("label", { className: "lbl", textContent: "Nascondi nelle schede" }),
-          hideList.length ? el("div", { className: "list" }, ...hideList)
-              : el("p", { className: "hint", textContent: "Nessun campo testuale da nascondere in questa colonna." }),
-          el("label", { className: "lbl", textContent: "Azioni della modifica rapida" }),
-          el("div", { className: "list two" }, ...qeList),
-          el("div", { className: "acts" },
-              scope !== "*" && colCfg.cols[scope]
-                  ? el("button", { type: "button", textContent: "Usa impostazioni generali",
-                    onclick: () => { delete colCfg.cols[scope]; saveCols(); refresh(); } })
-                  : null,
-              el("button", { type: "button", textContent: "Chiudi", onclick: closeColPop })));
+      pop.replaceChildren(...[
+        el("h4", { textContent: name }),
+        ...filterSection(recs, colFilters[lname], colSettings(name).prio, setFilter, clearFilter),
+        el("h4", { className: "sep", textContent: "Impostazioni" }),
+        scopeSel,
+        chk("Raggruppa per user story", !!cur.groupUs, (v) => edit((c) => { c.groupUs = v; })),
+        chk("Priorità dal colore della scheda", !!cur.prio, (v) => edit((c) => { c.prio = v; })),
+        ...prioSettings(cur, edit, prioOpen, togglePrio, refresh),
+        ...headerColorSection(setHead),
+        ...hideSection(recs, cur, editToggle),
+        ...qeSection(cur, editToggle),
+        el("div", { className: "acts" }, resetScopeButton(scope, refresh),
+            el("button", { type: "button", textContent: "Chiudi", onclick: closeColPop })),
+      ].filter(Boolean));
     }
 
     draw();

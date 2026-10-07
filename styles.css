@@ -12,7 +12,7 @@
 #ps-bar.min button:not(.ps-toggle){display:none}
 #ps-panel{position:fixed;left:12px;bottom:64px;z-index:9999;width:500px;max-width:calc(100vw - 24px);
   max-height:70vh;overflow-x:hidden;overflow-y:auto;box-sizing:border-box;padding:14px;border-radius:10px;
-  background:#262a36;color:#e6e6ea;box-shadow:0 4px 18px #0009;font:13px/1.4 system-ui,sans-serif}
+  background:#262a36;color:#e6e6ea;box-shadow:0 4px 18px #0009;font:13px/1.4 system-ui,sans-serif;color-scheme:dark}
 #ps-panel h4{margin:0 0 6px;font-size:14px;font-weight:600;color:#fff}
 #ps-panel h4.sep{margin-top:16px}
 #ps-panel label{display:block;margin:8px 0 3px;color:#b8bac4}
@@ -24,16 +24,14 @@
 #ps-panel .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 #ps-panel .primary{background:#714b67;color:#fff}
 #ps-panel .row{display:flex;align-items:center;gap:4px;padding:5px 0;border-top:1px solid #3a3f4d}
-#ps-panel .row span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ps-panel .row span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #ps-panel .icon{padding:4px 9px}
 #ps-panel button:disabled{opacity:.35;cursor:default}
-#ps-panel{color-scheme:dark}
 #ps-panel label.chk{display:flex;align-items:center;gap:8px;margin:6px 0;color:#e6e6ea;cursor:pointer}
 #ps-panel label.chk input{width:auto;margin:0}
 #ps-panel .inline{display:flex;gap:6px}
 #ps-panel .inline select{flex:1}
 #ps-panel .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
-#ps-panel .row span{min-width:0}
 #ps-panel .row select.mini{flex:none;max-width:130px}
 #ps-panel .row button,#ps-panel .acts button,#ps-panel .inline button{flex:none;white-space:nowrap}
 #ps-panel .inline input,#ps-panel .inline select{flex:1;min-width:0}
