@@ -3,7 +3,7 @@
   "use strict";
   const PS = window.__ps;
   if (!PS || PS.ready) return;
-  const { el, isolate, chk, store, popover, svg, recText, kanbanRecords,
+  const { el, isolate, chk, setFlag, store, popover, svg, recText, kanbanRecords,
     PALETTE, darkText, colorHex, PRIO, PRIO_ORDER, prioOf, prioButton, prioHex, prioSig, savePrio, resetPrio, DECO_MODELS, TAG_FIELDS, usOf, usKey, usColor } = PS;
 
   const QE_LABELS = {
@@ -93,11 +93,6 @@
   }
 
   const setOrder = (node, o) => { if (node.style.order !== o) node.style.order = o; };
-  // attributo data-* booleano, scritto solo quando cambia
-  const setFlag = (node, key, on) => {
-    if (on) { if (!node.dataset[key]) node.dataset[key] = "1"; }
-    else if (node.dataset[key]) delete node.dataset[key];
-  };
   const clickOnly = (node, fn) => {
     node.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); fn(); });
     return isolate(node);
@@ -220,7 +215,7 @@
     const sepByKey = new Map(seps.map((s) => [s.dataset.key, s]));
     list.forEach(([k, gr], i) => {
       const sep = sepByKey.get(k) || createUsSep(g, k, closed);
-      const visible = gr.items.filter(([c]) => !c.dataset.psFiltered).length;
+      const visible = gr.items.filter(([c]) => !c.dataset.psFiltered && !c.dataset.psSearch).length;
       const isClosed = closed.has(k);
       paintUsSep(sep, k, gr, visible, isClosed);
       setOrder(sep, String(i * 10));

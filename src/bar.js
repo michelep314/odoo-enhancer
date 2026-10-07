@@ -278,7 +278,7 @@
     });
 
     const exportBtn = el("button", {
-      textContent: "Esporta",
+      textContent: "Esporta pulsanti",
       onclick: async () => {
         const j = JSON.stringify(buttons, null, 2);
         try { await navigator.clipboard.writeText(j); alert("Configurazione copiata negli appunti."); }
@@ -286,7 +286,7 @@
       },
     });
     const importBtn = el("button", {
-      textContent: "Importa",
+      textContent: "Importa pulsanti",
       onclick: () => {
         const j = prompt("Incolla la configurazione esportata:");
         if (!j) return;
@@ -318,8 +318,9 @@
         el("div", { className: "acts" }, addBtn),
         el("h4", { className: "sep", textContent: "Pulsanti" }),
         ...rows,
-        el("div", { className: "acts" }, exportBtn, importBtn, resetBtn,
-            el("button", { textContent: "Chiudi", onclick: () => togglePanel("buttons") })));
+        el("div", { className: "acts" }, exportBtn, importBtn, resetBtn),
+        ...PS.backupSection(),
+        el("div", { className: "acts" }, el("button", { textContent: "Chiudi", onclick: () => togglePanel("buttons") })));
   }
 
   /* ---------- barra ---------- */
@@ -336,6 +337,7 @@
     bar.replaceChildren(
         el("button", { className: "ps-toggle", textContent: "☰", title: "Mostra/nascondi (Alt+P)", onclick: toggleBar }),
         ...buttons.map((b) => el("button", { textContent: b.label, onclick: () => open(b).catch(fail) })),
+        el("button", { className: "ps-manage", textContent: "🔍", title: "Cerca nelle schede (/)", onclick: () => PS.openSearch() }),
         panelBtn("bg", "🖼", "Sfondo"),
         panelBtn("ts", "⏱", "Compila fogli ore"),
         panelBtn("buttons", "+", "Aggiungi o gestisci pulsanti"));

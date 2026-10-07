@@ -34,8 +34,16 @@
     return el("label", { className: "chk" }, i, text);
   };
 
+  // attributo data-* booleano, scritto solo quando cambia
+  const setFlag = (node, key, on) => {
+    if (on) { if (!node.dataset[key]) node.dataset[key] = "1"; }
+    else if (node.dataset[key]) delete node.dataset[key];
+  };
+
   /* ---------- persistenza in localStorage ---------- */
+  const storeKeys = new Map();  // chiave → validatore: usato dal backup della configurazione
   function store(key, fallback, valid) {
+    storeKeys.set(key, valid);
     return {
       load() {
         try {
@@ -252,7 +260,7 @@
 
   Object.assign(PS, {
     SPRINT_FIELD, TASK, TS_MODEL,
-    getEnv, mod, Domain, el, fail, isolate, chk, store, popover,
+    getEnv, mod, Domain, el, fail, isolate, chk, setFlag, store, storeKeys, popover,
     pad, iso, parseIso, fmtDay, fmtHours, eachDay, parseHours,
     evalCtx, sprintValue, recText, kanbanRecords, findRecord,
     ICONS, svg, PALETTE, rgba, darkText, colorHex, PRIO, PRIO_ORDER, prioOf, prioButton,

@@ -231,3 +231,18 @@ html[data-ps-look] .ps-us{border-radius:max(3px,calc(var(--ps-radius) * .45))}
 #ps-colpop .prio-row .sw button.main{display:grid;place-items:center}
 #ps-colpop .prio-row .sw button.main::after{content:"";width:8px;height:8px;border-radius:50%;background:#fff;
   box-shadow:0 0 0 1px #0007}
+
+/* ---------- Ricerca rapida ---------- */
+.o_kanban_record[data-ps-search]{display:none!important}
+#ps-search{position:fixed;top:56px;left:50%;z-index:10002;display:flex;align-items:center;gap:8px;
+  width:min(560px,calc(100vw - 24px));box-sizing:border-box;transform:translateX(-50%);padding:6px 6px 6px 12px;
+  border:1px solid #4a5060;border-radius:10px;background:#262a36;color:#e6e6ea;box-shadow:0 6px 22px #000a;
+  font:13px/1.4 system-ui,sans-serif;color-scheme:dark}
+#ps-search .ic{flex:none;opacity:.7}
+#ps-search input{flex:1;min-width:0;padding:7px 4px;border:0;outline:0;background:transparent;color:#fff;font:inherit;font-size:14px}
+#ps-search input::-webkit-search-cancel-button{display:none}
+#ps-search .count{flex:none;padding:2px 8px;border-radius:9px;background:#3a3f4d;color:#b8bac4;font-size:12px;white-space:nowrap}
+#ps-search .x{flex:none;width:28px;height:28px;padding:0;border:0;border-radius:6px;background:transparent;
+  color:#b8bac4;font-size:18px;line-height:1;cursor:pointer}
+#ps-search .x:hover{background:#714b67;color:#fff}
+#ps-search:focus-within{border-color:#714b67}

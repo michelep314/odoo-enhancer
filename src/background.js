@@ -36,6 +36,7 @@
       get: (k) => tx("readonly", (st) => st.get(k)),
       set: (k, v) => tx("readwrite", (st) => st.put(v, k)),
       del: (k) => tx("readwrite", (st) => st.delete(k)),
+      keys: () => tx("readonly", (st) => st.getAllKeys()),
     };
   })();
 
@@ -192,5 +193,5 @@
             el("button", { textContent: "Chiudi", onclick: () => PS.togglePanel("bg") })));
   }
 
-  Object.assign(PS, { applyBg, renderBg });
+  Object.assign(PS, { applyBg, renderBg, idb });
 })();

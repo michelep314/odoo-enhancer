@@ -170,6 +170,7 @@
       for (const [card, rec] of records) {
         if (DECO_MODELS.includes(rec.resModel)) decorateCard(card, rec, cfgOf(card.closest(".o_kanban_group")));
       }
+      PS.applySearch(records);
       PS.decorateColumns(records);
     } finally {
       usMemo = null;

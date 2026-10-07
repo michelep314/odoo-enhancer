@@ -23,6 +23,7 @@
     if (location.href === lastHref) return;
     lastHref = location.href;
     PS.applyBg();
+    PS.clearSearch();
   };
 
   new MutationObserver((muts) => {
