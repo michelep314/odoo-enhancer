@@ -243,8 +243,14 @@
   function onLabelClick(e, l, rec) {
     e.preventDefault();
     e.stopPropagation();
+    showLabelPicker(e.currentTarget, l, rec);
+  }
+  // usato anche dalle testate dei gruppi US nelle colonne
+  const openUsColorPicker = (anchor, key, text) => showLabelPicker(anchor, { key, text, ci: usColor(key) }, null);
+
+  function showLabelPicker(anchor, l, rec) {
     const odooChk = l.tagId ? el("input", { type: "checkbox" }) : null;
-    openPicker(e.currentTarget,
+    openPicker(anchor,
         el("div", { className: "t", textContent: `Colore per ${l.text}` }),
         el("div", { className: "sw" }, ...PALETTE.slice(1).map(([hex, name], i) => {
           const s2 = el("button", { type: "button", title: name, className: l.ci === i + 1 ? "on" : "",
@@ -266,7 +272,7 @@
   };
 
   Object.assign(PS, {
-    DECO_MODELS, TAG_FIELDS, usValue, usOf, usKey, usColor, decorate, scheduleDecorate,
+    DECO_MODELS, TAG_FIELDS, usValue, usOf, usKey, usColor, decorate, scheduleDecorate, openUsColorPicker,
     usFieldName: () => usField,
   });
 })();

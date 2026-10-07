@@ -197,7 +197,21 @@
     sep.replaceChildren(
         el("span", { className: "chev", textContent: isClosed ? "▸" : "▾" }),
         el("span", { className: "name", textContent: gr.label }),
+        k === "__none" ? null : colorDot(k, gr.label),
         el("span", { className: "count", textContent: visible === total ? String(visible) : `${visible}/${total}` }));
+  }
+
+  // pallino nella testata: apre il selettore del colore di quella US (senza chiudere il gruppo)
+  function colorDot(k, label) {
+    const dot = el("span", { className: "dot", role: "button", tabIndex: 0, title: `Cambia il colore di ${label}` });
+    const openPicker = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      PS.openUsColorPicker(dot, k, label);
+    };
+    dot.addEventListener("click", openPicker);
+    dot.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") openPicker(e); });
+    return dot;
   }
 
   function sortByUs(g, lname, recs, rankOf, seps) {
@@ -503,6 +517,17 @@
       onclick: () => { delete colCfg.cols[scope]; saveCols(); refresh(); } });
   }
 
+  // stile delle testate dei gruppi US (vale per tutte le colonne)
+  function usHeadSection(refresh) {
+    const sel = el("select", { title: "Stile delle testate delle user story" },
+        el("option", { value: "solid", textContent: "Testate piene, nel colore della US" }),
+        el("option", { value: "soft", textContent: "Testate leggere, solo bordo colorato" }));
+    sel.value = colCfg.look.usHead || "solid";
+    sel.onchange = () => { colCfg.look.usHead = sel.value; saveCols(); applyLook(); refresh(); };
+    return el("div", { className: "sub" }, sel,
+        el("p", { className: "hint", textContent: "Il colore di ogni US si cambia dal pallino nella sua testata." }));
+  }
+
   /* popover della colonna */
   let colPop = null;
   const closeColPop = () => colPop?.close();
@@ -543,6 +568,7 @@
         el("h4", { className: "sep", textContent: "Impostazioni" }),
         scopeSel,
         chk("Raggruppa per user story", !!cur.groupUs, (v) => edit((c) => { c.groupUs = v; })),
+        cur.groupUs ? usHeadSection(refresh) : null,
         chk("Priorità dal colore della scheda", !!cur.prio, (v) => edit((c) => { c.prio = v; })),
         ...prioSettings(cur, edit, prioOpen, togglePrio, refresh),
         ...headerColorSection(setHead),
@@ -563,6 +589,7 @@
   function applyLook() {
     const l = colCfg.look, root = document.documentElement;
     root.dataset.psHeaders = "1";
+    root.dataset.psUshead = l.usHead || "solid";  // testate dei gruppi US: piene o leggere
     const hh = colorHex(l.header);
     if (hh) {
       root.style.setProperty("--ps-head", hh);

@@ -163,6 +163,17 @@ html[data-ps-glass][data-ps-bg="kanban"] .o_action_manager:has(.o_kanban_view) .
 .ps-usgroup .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ps-usgroup .count{flex:none;min-width:18px;padding:1px 7px;border-radius:9px;background:var(--ps-us-c);
   color:var(--ps-us-fg);font-size:11px;text-align:center}
+.ps-usgroup .dot{flex:none;width:12px;height:12px;border-radius:50%;background:var(--ps-us-c);
+  box-shadow:0 0 0 2px rgba(127,127,127,.45);cursor:pointer;opacity:0;transition:opacity .12s}
+.ps-usgroup:hover .dot,.ps-usgroup .dot:focus-visible{opacity:1}
+.ps-usgroup .dot:hover{transform:scale(1.2)}
+.ps-usgroup .dot:focus-visible{outline:2px solid #017e84;outline-offset:2px}
+/* testate piene: sfondo nel colore della US, testo a contrasto (leggibili su qualsiasi sfondo) */
+html[data-ps-ushead="solid"] .o_kanban_group>.ps-usgroup{background:var(--ps-us-c);color:var(--ps-us-fg);
+  border-left-color:color-mix(in srgb,var(--ps-us-c) 70%,#000);box-shadow:0 1px 3px #0004}
+html[data-ps-ushead="solid"] .o_kanban_group>.ps-usgroup:hover{background:color-mix(in srgb,var(--ps-us-c) 88%,var(--ps-us-fg))}
+html[data-ps-ushead="solid"] .ps-usgroup .count{background:color-mix(in srgb,var(--ps-us-fg) 22%,transparent);color:var(--ps-us-fg)}
+html[data-ps-ushead="solid"] .ps-usgroup .dot{box-shadow:0 0 0 2px var(--ps-us-fg)}
 html[data-ps-headers][data-ps-headall] .o_action_manager .o_kanban_view .o_kanban_group>.o_kanban_header{
   background:var(--ps-head)!important;border-radius:0!important;margin-bottom:8px;
   box-shadow:calc(var(--ps-head-ext,8px) * -1) 0 0 var(--ps-head),var(--ps-head-ext,8px) 0 0 var(--ps-head)!important}
@@ -200,6 +211,7 @@ html[data-ps-look] .ps-us{border-radius:max(3px,calc(var(--ps-radius) * .45))}
 #ps-colpop input[type=color]{width:40px;height:53px;padding:2px;border:1px solid #4a5060;border-radius:6px;
   background:#1d2029;cursor:pointer}
 #ps-colpop .hint{margin:4px 0 0;color:#8d90a0;font-size:12px}
+#ps-colpop .sub{margin:2px 0 8px 26px}
 #ps-colpop .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
 #ps-colpop .acts.tight{margin-top:6px}
 #ps-colpop .fl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
