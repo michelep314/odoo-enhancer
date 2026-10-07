@@ -210,3 +210,14 @@ html[data-ps-look] .ps-us{border-radius:max(3px,calc(var(--ps-radius) * .45))}
   font:inherit;cursor:pointer;white-space:nowrap}
 #ps-colpop .acts button:hover{background:#4a5060}
 #ps-colpop :focus-visible{outline:2px solid #017e84;outline-offset:1px}
+#ps-colpop .prio-edit{margin-top:8px;padding:8px;border-radius:8px;background:#1d2029}
+#ps-colpop .prio-row+.prio-row{margin-top:10px;padding-top:8px;border-top:1px solid #3a3f4d}
+#ps-colpop .prio-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+#ps-colpop .prio-head .pv{flex:none;pointer-events:none}
+#ps-colpop .prio-head input{flex:1;min-width:0;box-sizing:border-box;padding:5px 7px;border-radius:6px;
+  border:1px solid #4a5060;background:#262a36;color:#e6e6ea;font:inherit}
+#ps-colpop .prio-row .sw button.taken{opacity:.3}
+#ps-colpop .prio-row .sw button.taken:hover{opacity:.7}
+#ps-colpop .prio-row .sw button.main{display:grid;place-items:center}
+#ps-colpop .prio-row .sw button.main::after{content:"";width:8px;height:8px;border-radius:50%;background:#fff;
+  box-shadow:0 0 0 1px #0007}

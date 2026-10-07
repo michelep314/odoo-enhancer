@@ -4,7 +4,7 @@
   const PS = window.__ps;
   if (!PS || PS.ready) return;
   const { el, isolate, chk, store, popover, svg, recText, kanbanRecords,
-    PALETTE, darkText, colorHex, PRIO, PRIO_ORDER, prioOf, DECO_MODELS, TAG_FIELDS, usOf, usKey, usColor } = PS;
+    PALETTE, darkText, colorHex, PRIO, PRIO_ORDER, prioOf, prioButton, prioHex, prioSig, savePrio, resetPrio, DECO_MODELS, TAG_FIELDS, usOf, usKey, usColor } = PS;
 
   const QE_LABELS = {
     open: "Apri scheda", hours: "Registra ore", tag: "Modifica etichette", user: "Modifica membri",
@@ -139,12 +139,13 @@
           head.append(sum);
         }
         const active = colFilters[lname]?.prio || "";
-        const sig = JSON.stringify([counts, active]);
+        const sig = JSON.stringify([counts, active, prioSig()]);
         if (sum.dataset.sig !== sig) {
           sum.dataset.sig = sig;
           sum.replaceChildren(...PRIO_ORDER.filter((k) => counts[k]).map((k) => {
             const b = el("button", { type: "button", className: `ps-prio-dot ps-prio-${k}${active === k ? " on" : ""}`,
               title: `${PRIO[k].label}: ${counts[k]} (clic per filtrare)` }, el("span", { className: "d" }), String(counts[k]));
+            b.style.setProperty("--pc", prioHex(k));
             b.setAttribute("aria-pressed", String(active === k));
             b.addEventListener("click", (e) => {
               e.preventDefault();
@@ -246,6 +247,75 @@
     if (b.title !== t) b.title = t;
   }
 
+  /* priorità personalizzate: nome e colori di ogni livello (valgono per tutte le colonne) */
+  const colorName = (c) => PALETTE[c][1].toLowerCase();
+  const prioLegend = () => PRIO_ORDER.map((k) =>
+      `${k === "none" ? "nessun colore" : PRIO[k].colors.map(colorName).join(" o ")} = ${PRIO[k].label.toLowerCase()}`)
+      .join(", ").replace(/^./, (c) => c.toUpperCase()) + ".";
+
+  // clic su un colore: libero → si aggiunge; secondario → diventa principale; principale → si toglie
+  function cyclePrioColor(k, c) {
+    const own = PRIO[k].colors, pos = own.indexOf(c);
+    if (pos === -1) {
+      const other = PRIO_ORDER.find((o) => o !== k && PRIO[o].colors.includes(c));
+      if (other) {
+        if (PRIO[other].colors.length === 1) {
+          alert(`${PALETTE[c][1]} è l'unico colore di "${PRIO[other].label}": aggiungi prima un altro colore a quella priorità.`);
+          return false;
+        }
+        PRIO[other].colors = PRIO[other].colors.filter((x) => x !== c);
+      }
+      own.push(c);
+    } else if (pos > 0) {
+      own.splice(pos, 1);
+      own.unshift(c);
+    } else if (own.length > 1) {
+      own.shift();
+    } else {
+      alert("Ogni priorità deve avere almeno un colore.");
+      return false;
+    }
+    return true;
+  }
+
+  function prioEditor(onChange) {
+    const commit = () => { savePrio(); onChange(); };
+    const rows = PRIO_ORDER.map((k) => {
+      const preview = prioButton(k, false);
+      preview.classList.add("pv");
+      preview.tabIndex = -1;
+      const name = el("input", { value: PRIO[k].label, maxLength: 24, title: "Nome della priorità" });
+      name.onchange = () => {
+        const v = name.value.trim();
+        if (v && v !== PRIO[k].label) { PRIO[k].label = v; commit(); } else name.value = PRIO[k].label;
+      };
+      const colors = k === "none"
+          ? el("p", { className: "hint", textContent: "Schede senza colore." })
+          : el("div", { className: "sw" }, ...PALETTE.slice(1).map(([hx, nm], i) => {
+            const c = i + 1, pos = PRIO[k].colors.indexOf(c);
+            const owner = PRIO_ORDER.find((o) => o !== k && PRIO[o].colors.includes(c));
+            const b = el("button", {
+              type: "button",
+              className: pos === 0 ? "on main" : pos > 0 ? "on" : owner ? "taken" : "",
+              title: pos === 0 ? `${nm}: colore usato quando scegli "${PRIO[k].label}" (clic per toglierlo)`
+                  : pos > 0 ? `${nm}: vale anche come "${PRIO[k].label}" (clic per renderlo principale)`
+                      : owner ? `${nm}: ora vale "${PRIO[owner].label}" (clic per spostarlo qui)`
+                          : `${nm}: clic per aggiungerlo`,
+              onclick: () => { if (cyclePrioColor(k, c)) commit(); },
+            });
+            b.style.background = hx;
+            return b;
+          }));
+      return el("div", { className: "prio-row" }, el("div", { className: "prio-head" }, preview, name), colors);
+    });
+    return [
+      ...rows,
+      el("p", { className: "hint", textContent: "Clic su un colore per aggiungerlo; di nuovo per renderlo principale (quello scritto quando scegli la priorità, con il punto); ancora per toglierlo." }),
+      el("div", { className: "acts tight" }, el("button", { type: "button", textContent: "Ripristina priorità predefinite",
+        onclick: () => { if (confirm("Ripristinare nomi e colori predefiniti delle priorità?")) { resetPrio(); onChange(); } } })),
+    ];
+  }
+
   /* popover della colonna */
   let colPop = null;
   const closeColPop = () => colPop?.close();
@@ -257,6 +327,7 @@
     closeColPop();
     const lname = name.toLowerCase();
     let scope = lname;
+    let prioOpen = false;  // editor delle priorità aperto
     const p = popover("ps-colpop", { ignore: ".ps-colbtn", onClose: () => { if (colPop === p) colPop = null; } });
     colPop = p;
     const pop = p.node;
@@ -378,7 +449,12 @@
           chk("Raggruppa per user story", !!cur.groupUs, (v) => edit((c) => { c.groupUs = v; })),
           chk("Priorità dal colore della scheda", !!cur.prio, (v) => edit((c) => { c.prio = v; })),
           cur.prio ? chk("Ordina per priorità (alta → bassa)", !!cur.prioSort, (v) => edit((c) => { c.prioSort = v; })) : null,
-          cur.prio ? el("p", { className: "hint", textContent: "Rosso = alta, giallo = media, verde = bassa, nessun colore = da valutare." }) : null,
+          cur.prio ? el("p", { className: "hint", textContent: prioLegend() }) : null,
+          cur.prio ? el("div", { className: "acts tight" }, el("button", {
+            type: "button", textContent: prioOpen ? "Chiudi personalizzazione priorità" : "Personalizza priorità…",
+            ariaExpanded: String(prioOpen), onclick: () => { prioOpen = !prioOpen; draw(); },
+          })) : null,
+          ...(cur.prio && prioOpen ? [el("div", { className: "prio-edit" }, ...prioEditor(refresh))] : []),
           el("label", { className: "lbl", textContent: "Colore intestazioni (fascia su tutte le colonne)" }),
           el("div", { className: "inline" }, sw, custom),
           el("label", { className: "lbl", textContent: "Nascondi nelle schede" }),

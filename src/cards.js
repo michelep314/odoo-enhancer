@@ -4,7 +4,7 @@
   const PS = window.__ps;
   if (!PS || PS.ready) return;
   const { TASK, getEnv, el, fail, isolate, store, popover, recText, kanbanRecords,
-    PALETTE, rgba, PRIO, PRIO_ORDER, prioOf, prioButton } = PS;
+    PALETTE, rgba, PRIO, PRIO_ORDER, prioOf, prioButton, prioHex } = PS;
 
   /* ================= CONFIGURAZIONE ================= */
   const DECO_MODELS = [TASK];
@@ -111,7 +111,7 @@
 
         const labels = [];
         const pk = ccfg.prio ? prioOf(rec) : null;
-        if (pk) labels.push({ key: "prio:" + pk, text: PRIO[pk].label, prio: pk });
+        if (pk) labels.push({ key: "prio:" + pk, text: PRIO[pk].label, ci: prioHex(pk), prio: pk });
         const v = US_BADGE ? usOf(rec) : null;
         if (v) labels.push({ key: usKey(v), text: v, ci: usColor(usKey(v)) });
         if (TAG_BADGES) {
