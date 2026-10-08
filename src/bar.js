@@ -205,7 +205,7 @@
     placePanel();
     syncActive();
     await (kind === "ts" ? PS.renderTs(env, panel) : kind === "bg" ? PS.renderBg(panel)
-        : kind === "news" ? PS.renderNews(panel) : renderPanel(env));
+        : kind === "news" ? PS.renderNews(panel) : kind === "notes" ? PS.renderNotes(panel) : renderPanel(env));
   }
 
   const fillViewSelect = (sel, modes, current) => {
@@ -405,6 +405,15 @@
     b.dataset.panel = kind;
     return b;
   };
+  // note: numero delle note da guardare (scadute o importanti); rosso se c'è un promemoria scaduto
+  const notesBtn = () => {
+    const { count, due } = PS.notesBadge();
+    const title = count ? `Note e promemoria: ${count} da guardare${due ? `, ${due} scadut${due === 1 ? "o" : "i"}` : ""}` : "Note e promemoria";
+    const b = panelBtn("notes", "note", title);
+    if (count) b.append(el("span", { className: `ps-badge${due ? "" : " soft"}`, textContent: count > 99 ? "99+" : String(count) }));
+    return b;
+  };
+  const hasAlert = () => PS.hasNews() || PS.notesBadge().due > 0;  // pallino sulla freccia o sul ☰ quando sono compressi
   const toolButtons = () => {
     const news = panelBtn("news", "sparkle", PS.hasNews() ? "Novità (da leggere)" : "Novità");
     news.classList.toggle("ps-new", PS.hasNews());
@@ -412,6 +421,7 @@
       iconBtn("search", "Cerca nelle schede (/)", () => PS.openSearch()),
       panelBtn("bg", "image", "Sfondo"),
       panelBtn("ts", "hours", "Compila fogli ore"),
+      notesBtn(),
       panelBtn("buttons", "plus", "Aggiungi o gestisci pulsanti"),
       news,
     ];
@@ -475,7 +485,7 @@
   function renderTray() {
     const open = trayState.open;
     tray.classList.toggle("collapsed", !open);
-    tray.classList.toggle("ps-has-new", PS.hasNews());
+    tray.classList.toggle("ps-has-new", hasAlert());
     const toggle = iconBtn(open ? "chevronRight" : "chevronLeft",
         open ? "Comprimi gli strumenti di Odoo Enhancer" : "Mostra gli strumenti di Odoo Enhancer",
         () => toggleTray().catch(fail));
@@ -490,7 +500,7 @@
   const toggleBar = () => { if (bar.classList.toggle("min")) closePanel(); };
   function render() {
     const fallback = !inTray;
-    bar.classList.toggle("ps-has-new", fallback && PS.hasNews());  // pallino anche sul ☰ quando la barra è ridotta
+    bar.classList.toggle("ps-has-new", fallback && hasAlert());  // pallino anche sul ☰ quando la barra è ridotta
     bar.classList.toggle("empty", !fallback && !buttons.length);
     bar.replaceChildren(
         el("button", { className: "ps-toggle", textContent: "☰", title: "Mostra/nascondi (Alt+P)", onclick: toggleBar }),

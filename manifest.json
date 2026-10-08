@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Odello",
-  "version": "1.18",
+  "version": "1.19",
   "description": "Nuove funzionalita' per personalizzare odoo",
   "content_scripts": [
     {
@@ -16,6 +16,7 @@
         "src/search.js",
         "src/backup.js",
         "src/timesheet.js",
+        "src/notes.js",
         "src/whatsnew.js",
         "src/bar.js",
         "src/quickedit.js",

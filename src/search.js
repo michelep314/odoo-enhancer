@@ -133,7 +133,13 @@
     try { PS.decorate(); } catch (e) { console.warn("[pulsantiera] ricerca:", e); }
   };
 
-  function openSearch() {
+  // text (facoltativo) = ricerca da avviare subito, es. il nome di una US da una nota
+  function openSearch(text) {
+    if (typeof text === "string") {
+      query = text;
+      terms = parse(query);
+      if (input) { input.value = query; redecorate(); }
+    }
     if (!box) {
       input = el("input", { type: "search", placeholder: "Cerca: testo, descrizione, note, US, @persona, #numero, \"frase\"",
         value: query, spellcheck: false });

@@ -4,6 +4,11 @@ Tutte le modifiche rilevanti di Odoo Enhancer. Il formato segue [Keep a Changelo
 
 > Quando si pubblica una versione aggiornare **insieme**: `manifest.json` (`version`), `src/changelog.js` (pannello ✨ Novità) e questo file.
 
+## [1.19] - 2026-10-08
+
+### Aggiunto
+- **Note e promemoria** (nuova icona 📄 nella barra, `src/notes.js`): note di testo con promemoria facoltativo (data e ora sempre a 24 ore, 00:00–23:59, con tendine ora e minuti invece del campo del browser che in inglese mostra AM/PM; scorciatoie "Tra 1 ora", "Oggi 17:00", "Domani 9:00") e collegamento facoltativo a una scheda (ricerca per titolo o #numero, oppure la scheda aperta in form) o a una user story (scelta tra quelle del kanban o scritta a mano). Alla scadenza arriva una notifica di Odoo con "Fatto", "Tra 10 minuti" e "Apri" (apre la scheda o cerca la US nel kanban); controllo ogni 30 s, una sola notifica per scadenza anche con più schede del browser aperte. Insieme alla notifica suona un breve "din-don" sintetizzato con Web Audio (nessun file audio), disattivabile dal pannello con "Suono quando scade un promemoria" e provabile con 🔊 Prova (`ps-notes-opts-v1`); il browser lo permette solo dopo almeno un clic o un tasto nella pagina. Sull'icona un numero indica le note da guardare (scadute o segnate ★ importanti): rosso se c'è un promemoria scaduto, giallo se sono solo importanti; pallino sulla freccia o sul ☰ quando compressi e c'è un promemoria scaduto. Il modulo "＋ Nuova nota" è richiudibile e parte chiuso (aperto solo se non ci sono note), così in primo piano c'è l'elenco: scaduti in cima, poi importanti, con ★ per segnarle al volo, modifica, eliminazione e completate nascoste a richiesta. Le note restano nel browser (`ps-notes-v1`) e sono incluse nel backup.
+
 ## [1.18] - 2026-10-08
 
 ### Aggiunto

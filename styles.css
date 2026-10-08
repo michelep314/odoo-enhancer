@@ -368,3 +368,49 @@ html[data-ps-look] .ps-us{border-radius:max(3px,calc(var(--ps-radius) * .45))}
 #ps-tray .ps-tray-toggle:hover svg{transform:translateX(2px)}
 #ps-tray.collapsed .ps-tray-toggle:hover svg{transform:translateX(-2px)}
 @media (prefers-reduced-motion: reduce){#ps-tray button,#ps-tray .ps-tray-toggle svg{transition:none}}
+
+/* ---------- Note e promemoria ---------- */
+#ps-panel textarea{width:100%;box-sizing:border-box;min-height:64px;padding:7px;border-radius:6px;border:1px solid #4a5060;
+  background:#1d2029;color:#e6e6ea;font:inherit;resize:vertical}
+#ps-panel .acts.tight{margin-top:6px}
+#ps-panel .acts.tight button{padding:4px 9px;font-size:12px}
+#ps-panel .ps-note-link{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 10px;border-radius:6px;
+  background:#1d2029;border-left:3px solid #017e84}
+#ps-panel .ps-note-link span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ps-panel .ps-notes{display:flex;flex-direction:column;gap:4px;margin-top:4px}
+#ps-panel .ps-note{display:flex;align-items:flex-start;gap:8px;padding:7px 6px 7px 8px;border-radius:8px;background:#1d2029;
+  border-left:3px solid #4a5060}
+#ps-panel .ps-note.due{border-left-color:#F06050}
+#ps-panel .ps-note.done{opacity:.55}
+#ps-panel .ps-note.done .text{text-decoration:line-through}
+#ps-panel .ps-note>input[type=checkbox]{width:auto;margin:3px 0 0;flex:none;accent-color:#714b67}
+#ps-panel .ps-note .body{flex:1;min-width:0}
+#ps-panel .ps-note .text{white-space:pre-wrap;overflow-wrap:anywhere}
+#ps-panel .ps-note .meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:4px;font-size:11.5px;color:#8d90a0}
+#ps-panel .ps-note.due .when{color:#F06050;font-weight:600}
+#ps-panel .ps-note .chip{max-width:100%;padding:1px 8px;border-radius:999px;background:#2f3442;color:#b8bac4;font-size:11.5px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ps-panel .ps-note .tools{flex:none;display:flex;gap:2px}
+#ps-panel .ps-note .icon{width:24px;height:24px;padding:0;display:grid;place-items:center;background:transparent;color:#b8bac4}
+#ps-panel .ps-note .icon:hover{background:#3a3f4d;color:#fff}
+#ps-panel .ps-note .icon.del:hover{background:#c0392b}
+/* numero sull'icona delle note: rosso = promemoria scaduti, giallo = solo note importanti */
+:is(#ps-tray,#ps-bar) button[data-panel="notes"]{position:relative}
+:is(#ps-tray,#ps-bar) .ps-badge{position:absolute;top:1px;right:0;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;
+  border-radius:8px;background:#F06050;color:#fff;font:700 10px/16px system-ui,sans-serif;text-align:center;pointer-events:none;
+  box-shadow:0 0 0 2px var(--NavBar-background-color,#262a36)}
+:is(#ps-tray,#ps-bar) .ps-badge.soft{background:#F7CD1F;color:#1d2029}
+#ps-panel details.ps-note-new{margin-top:4px;padding:0 10px;border-radius:8px;background:#2b2f3b}
+#ps-panel details.ps-note-new[open]{padding-bottom:10px}
+#ps-panel details.ps-note-new summary{padding:8px 0;color:#e6e6ea;font-weight:600;cursor:pointer;user-select:none}
+#ps-panel details.ps-note-new summary:hover{color:#fff}
+#ps-panel .ps-note.imp{border-left-color:#F7CD1F}
+#ps-panel .ps-note.imp.due{border-left-color:#F06050}
+#ps-panel .ps-note .icon.star.on{color:#F7CD1F}
+#ps-panel .ps-note-sound{align-items:center;justify-content:space-between;margin-top:10px}
+#ps-panel .ps-note-sound button{padding:4px 9px;font-size:12px}
+/* promemoria: data + ora a 24 ore */
+#ps-panel .ps-due{display:flex;align-items:center;gap:6px}
+#ps-panel .ps-due input[type=date]{flex:1;min-width:0}
+#ps-panel .ps-due select{width:auto;flex:none;padding:7px 4px;text-align:center}
+#ps-panel .ps-due span{color:#8d90a0;font-weight:600}

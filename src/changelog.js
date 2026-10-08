@@ -9,6 +9,13 @@
   // dalla più recente alla più vecchia; "how" (facoltativo) dice dove trovare la funzione
   const CHANGELOG = [
     {
+      version: "1.19", date: "2026-10-08",
+      items: [
+        { title: "Note e promemoria", text: "Appunta cose da fare e, se vuoi, imposta un promemoria: all'ora scelta arriva una notifica in Odoo, con un breve suono (disattivabile). Ogni nota si può collegare a una scheda o a una user story e aprirla con un clic. Il numero sull'icona ti dice quante note scadute o importanti (★) ti aspettano.",
+          how: "Icona 📄 nella barra in alto" },
+      ],
+    },
+    {
       version: "1.18", date: "2026-10-08",
       items: [
         { title: "Sposta un'intera user story", text: "Con il raggruppamento per user story, trascina la testata di una US su un'altra colonna: tutte le sue schede si spostano insieme, dopo una conferma.",
