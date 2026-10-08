@@ -13,6 +13,10 @@
       items: [
         { title: "Ricerca nelle descrizioni", text: "La ricerca rapida guarda anche descrizione, note e criteri di accettazione. Più parole vanno tutte trovate, anche in campi diversi: \"alunno sospeso\" trova le schede con alunno e sospeso, come in Trello. Tra virgolette cerchi la frase esatta.",
           how: "Premi / in una vista kanban, oppure 🔍 nella barra" },
+        { title: "Usa pagina corrente", text: "Per creare un pulsante non serve più copiare l'URL: un clic prende menu, vista e progetto della pagina che hai aperto.",
+          how: "Pannello + → Nuovo pulsante → URL della vista" },
+        { title: "Cerca il progetto nei fogli ore", text: "Scrivi parte del nome e scegli dall'elenco, anche con frecce e Invio. I progetti che iniziano con \"Progetto\" compaiono per primi.",
+          how: "Pannello Fogli ore → Progetto" },
         { title: "Elenco dei pulsanti più ordinato", text: "Ogni pulsante sta su una riga compatta, con modello e sprint sotto il nome e gli strumenti in linea. Ora puoi anche spostarlo giù, oltre che su.",
           how: "Pannello + → Pulsanti" },
       ],

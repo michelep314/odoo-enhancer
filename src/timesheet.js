@@ -71,6 +71,68 @@
     return { todo, skipped, leaveError };
   }
 
+  // ricerca dei progetti: tutte le parole, senza accenti; in cima quelli che iniziano con "progetto"
+  const norm = (s) => String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const projRank = (p) => (norm(p.display_name).startsWith("progetto") ? 0 : 1);
+  const MAX_OPTS = 200;
+
+  // campo con ricerca e elenco a discesa (frecce, Invio, Esc); onPick(progetto | null)
+  function projectPicker(projects, onPick) {
+    const sorted = [...projects].sort((a, b) => projRank(a) - projRank(b));  // stabile: resta l'ordine per nome
+    let cur = null, items = [], active = -1;
+    const input = el("input", { placeholder: "Cerca un progetto…", autocomplete: "off", spellcheck: false });
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-expanded", "false");
+    const list = el("div", { className: "ps-combo-list", role: "listbox", hidden: true });
+    const node = el("div", { className: "ps-combo" }, input, list);
+
+    const open = (on) => { list.hidden = !on; input.setAttribute("aria-expanded", String(on)); };
+    function setActive(i) {
+      active = i;
+      [...list.children].forEach((o, j) => o.classList.toggle("on", j === i));
+      list.children[i]?.scrollIntoView({ block: "nearest" });
+    }
+    function pick(p, silent = false) {
+      const changed = p?.id !== cur?.id;
+      cur = p;
+      input.value = p?.display_name || "";
+      open(false);
+      if (changed && !silent) onPick(p);
+    }
+    function render() {
+      // con il nome del progetto scelto nel campo mostro tutto l'elenco
+      const words = cur && input.value === cur.display_name ? [] : norm(input.value).split(/\s+/).filter(Boolean);
+      items = sorted.filter((p) => words.every((w) => norm(p.display_name).includes(w))).slice(0, MAX_OPTS);
+      list.replaceChildren(...(items.length
+          ? items.map((p) => el("div", { className: "opt", role: "option", textContent: p.display_name,
+            onmousedown: (e) => { e.preventDefault(); pick(p); } }))  // mousedown: prima che il campo perda il focus
+          : [el("div", { className: "empty", textContent: "Nessun progetto trovato" })]));
+      open(true);
+      setActive(items.length ? Math.max(0, items.findIndex((p) => p.id === cur?.id)) : -1);
+    }
+
+    input.addEventListener("focus", () => { input.select(); render(); });
+    input.addEventListener("input", render);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        if (list.hidden) return render();
+        if (items.length) setActive((active + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length);
+      } else if (e.key === "Enter" && !list.hidden) {
+        e.preventDefault();
+        if (items[active]) pick(items[active]);
+      } else if (e.key === "Escape" && !list.hidden) {
+        e.preventDefault();
+        e.stopPropagation();
+        pick(cur, true);
+      }
+    });
+    // uscendo dal campo: vuoto = nessun progetto, altrimenti torna al progetto scelto
+    input.addEventListener("blur", () => { if (input.value.trim()) pick(cur, true); else pick(null); });
+
+    return { node, get value() { return cur; }, set: (p) => pick(p, true) };
+  }
+
   async function renderTs(env, panel) {
     const { orm, action } = env.services;
     panel.replaceChildren(el("p", { className: "hint", textContent: "Carico i progetti…" }));
@@ -93,9 +155,7 @@
         if (t && confirm(`Eliminare "${t.label}"?`)) { templates.splice(Number(tplSel.value), 1); tsSave(); fillTpl(); }
       },
     });
-    const projSel = el("select", {},
-        el("option", { value: "", textContent: "Scegli un progetto" }),
-        ...projects.map((p) => el("option", { value: String(p.id), textContent: p.display_name })));
+    const projSel = projectPicker(projects, (p) => { invalidate(); loadTasks(p?.id || null).catch(fail); });
     const taskSel = el("select", { disabled: true }, el("option", { value: "", textContent: "Nessuna attività" }));
     const descIn = el("input", { placeholder: "Descrizione" });
     const hoursIn = el("input", { placeholder: "8, 7,5 oppure 7:30", value: "8" });
@@ -110,26 +170,23 @@
       taskSel.append(...tasks.map((t) => el("option", { value: String(t.id), textContent: t.display_name })));
       taskSel.value = keep ? String(keep[0]) : "";
     }
-    projSel.onchange = () => loadTasks(Number(projSel.value) || null).catch(fail);
     tplSel.onchange = () => {
       const t = templates[tplSel.value];
       if (!t) return;
-      if (!projects.some((p) => p.id === t.project[0]))
-        projSel.append(el("option", { value: String(t.project[0]), textContent: t.project[1] }));
-      projSel.value = String(t.project[0]);
+      projSel.set(projects.find((p) => p.id === t.project[0]) || { id: t.project[0], display_name: t.project[1] });
       descIn.value = t.name || "";
       hoursIn.value = String(t.hours).replace(".", ",");
       loadTasks(t.project[0], t.task).catch(fail);
     };
 
     function currentRow() {
-      const pid = Number(projSel.value);
-      if (!pid) throw new Error("scegli un progetto");
+      const proj = projSel.value;
+      if (!proj) throw new Error("scegli un progetto");
       const hours = parseHours(hoursIn.value);
       if (!hours) throw new Error("ore non valide (es. 8, 7,5 o 7:30)");
       const tid = Number(taskSel.value) || null;
       return {
-        project: [pid, projSel.selectedOptions[0].textContent],
+        project: [proj.id, proj.display_name],
         task: tid ? [tid, taskSel.selectedOptions[0].textContent] : null,
         name: descIn.value.trim(),
         hours,
@@ -233,7 +290,7 @@
     panel.replaceChildren(
         el("h4", { textContent: "Fogli ore" }),
         el("label", { textContent: "Riga salvata" }), el("div", { className: "inline" }, tplSel, delTpl),
-        el("label", { textContent: "Progetto" }), projSel,
+        el("label", { textContent: "Progetto" }), projSel.node,
         el("label", { textContent: "Attività" }), taskSel,
         el("label", { textContent: "Descrizione" }), descIn,
         el("label", { textContent: "Ore al giorno" }), hoursIn,
@@ -247,7 +304,7 @@
         preview,
         el("div", { className: "acts" }, el("button", { textContent: "Chiudi", onclick: () => PS.togglePanel("ts") })));
 
-    for (const n of [tplSel, projSel, taskSel, descIn, hoursIn, fromIn, toIn,
+    for (const n of [tplSel, taskSel, descIn, hoursIn, fromIn, toIn,
       wkL.control, hoL.control, lvL.control, flL.control]) {
       n.addEventListener("input", invalidate);
       n.addEventListener("change", invalidate);

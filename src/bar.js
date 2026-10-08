@@ -41,6 +41,27 @@
       menu_id: num("menu_id"),
     };
   }
+  // URL nel formato di parseOdooUrl per la pagina aperta, letto dallo stato di Odoo (vale anche
+  // quando l'indirizzo non contiene action=); null se l'azione corrente non ha un id
+  function currentPageUrl(env) {
+    const ctrl = env?.services.action?.currentController;
+    const act = ctrl?.action;
+    const hash = new URLSearchParams(location.hash.slice(1));
+    const action = (typeof act?.id === "number" && act.id) || Number(hash.get("action")) || null;
+    if (!action) return null;
+    let menu = null;
+    try { menu = env.services.menu?.getCurrentApp?.()?.id || null; } catch { /* menu non pronto */ }
+    const p = new URLSearchParams({ action: String(action) });
+    const model = act?.res_model || hash.get("model");
+    const viewType = ctrl?.view?.type || ctrl?.props?.type || hash.get("view_type");
+    const activeId = act?.context?.active_id || Number(hash.get("active_id")) || null;
+    menu ||= Number(hash.get("menu_id")) || null;
+    if (model) p.set("model", model);
+    if (viewType) p.set("view_type", viewType);
+    if (activeId) p.set("active_id", String(activeId));
+    if (menu) p.set("menu_id", String(menu));
+    return `${location.origin}/web#${p}`;
+  }
   const parseDomain = (str, ctx) => new (Domain())(str || "[]").toList(ctx);
   const parseContext = (str, ctx) =>
       str && str.trim() !== "{}" ? mod("@web/core/py_js/py").evaluateExpr(str, ctx) : {};
@@ -240,6 +261,14 @@
       }
       refresh().catch(fail);
     };
+    const hereBtn = el("button", { type: "button", textContent: "Usa pagina corrente",
+      title: "Compila l'URL con menu, vista e progetto della pagina aperta",
+      onclick: () => {
+        const u = currentPageUrl(env);
+        if (!u) return alert("La pagina corrente non è una vista salvabile: aprila dal menu di Odoo e riprova.");
+        urlIn.value = u;
+        urlIn.onchange();
+      } });
 
     // salva e ridisegna il pannello
     const commit = () => { save(); renderPanel(env); };
@@ -329,7 +358,7 @@
 
     panel.replaceChildren(
         el("h4", { textContent: "Nuovo pulsante" }),
-        el("label", { textContent: "URL della vista" }), urlIn,
+        el("label", { textContent: "URL della vista" }), el("div", { className: "inline" }, urlIn, hereBtn),
         el("label", { textContent: "Preferito (filtri)" }), favSel,
         el("label", { textContent: "Nome" }), nameIn,
         el("label", { textContent: "Vista iniziale" }), viewSel,

@@ -8,6 +8,8 @@ Tutte le modifiche rilevanti di Odoo Enhancer. Il formato segue [Keep a Changelo
 
 ### Aggiunto
 - **Ricerca rapida nelle descrizioni**: cerca anche in descrizione, note e criteri di accettazione (campi html/testo il cui nome o etichetta contiene "descr", "note", "acceptance" o "criteri"). Non sono caricati nelle schede: vengono letti dal server alla prima ricerca, a blocchi di 200, e tenuti finché la ricerca resta aperta; nel frattempo il conteggio mostra "cerco nelle descrizioni…". Più parole restano in AND anche tra campi diversi (come Trello: `alunno sospeso` trova le schede che contengono entrambe le parole, ovunque); tra virgolette si cerca la frase esatta (`"alunno sospeso"`).
+- **Usa pagina corrente** accanto a "URL della vista" (pannello +): compila l'URL con azione, modello, vista, progetto (`active_id`) e menu della pagina aperta, letti dallo stato di Odoo anche quando l'indirizzo non contiene `action=`.
+- **Ricerca del progetto** nei fogli ore: al posto della tendina c'è un campo in cui scrivere, con elenco a discesa filtrato (tutte le parole, senza accenti) e navigabile con frecce, Invio ed Esc. I progetti che iniziano con "Progetto" stanno in cima, gli altri seguono in ordine alfabetico.
 - Pulsante **↓ Sposta giù** nell'elenco dei pulsanti, accanto a ↑.
 
 ### Corretto
