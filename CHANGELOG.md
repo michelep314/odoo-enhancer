@@ -4,6 +4,17 @@ Tutte le modifiche rilevanti di Odoo Enhancer. Il formato segue [Keep a Changelo
 
 > Quando si pubblica una versione aggiornare **insieme**: `manifest.json` (`version`), `src/changelog.js` (pannello ✨ Novità) e questo file.
 
+## [1.16] - 2026-10-07
+
+### Aggiunto
+- Sfondo **per app** (Helpdesk, Progetti, Fogli ore…) oltre che per singola vista e per tutte le pagine. La vista vince sull'app, l'app su tutte le pagine. App e vista corrente si leggono dallo stato di Odoo, non più solo da `action=` nell'URL: ora l'opzione "Solo questa vista" compare anche nelle pagine dove prima mancava.
+- **Sbiancamento** dello sfondo: il cursore va da −80% (velo bianco) a +80% (velo nero).
+- **Angoli arrotondati delle schede**, indipendenti dall'ombra e da "Spazio e colonne personalizzati". Il contenuto della scheda (copertina, striscia di colore) viene ritagliato sugli angoli, tranne quando è aperto il menu ⋮. Con spazio 0 px tra le schede, si arrotondano solo la prima e l'ultima di ogni pila (colonna o gruppo US).
+- **Posizione delle icone degli strumenti** (pannello + → Icone degli strumenti): sinistra (dopo i menu di Odoo), centro o destra. Compresse stanno sempre a destra, accanto alla chat. Se nella posizione scelta non c'è spazio, si spostano a destra.
+
+### Corretto
+- Colonne senza schede che sparivano nelle viste aperte dalla barra. Se tutte le schede appartengono a un solo progetto (task) o team (helpdesk), viene aggiunto `default_project_id` / `default_team_id` al contesto, così Odoo mostra tutte le fasi.
+
 ## [1.15] - 2026-10-07
 
 ### Aggiunto

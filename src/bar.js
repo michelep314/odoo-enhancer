@@ -84,6 +84,24 @@
     return found ? out : Domain().and([out, [[SPRINT_FIELD, "=", n]]]).toList();
   }
 
+  // Odoo mostra le fasi vuote (colonne senza schede) solo se il contesto dice a quale progetto/team appartiene
+  // la vista. Se tutte le schede del pulsante stanno in un solo progetto/team, lo aggiungo io al contesto.
+  const EXPAND_CTX = {
+    [TASK]: ["default_project_id", "project_id"],
+    "helpdesk.ticket": ["default_team_id", "team_id"],
+  };
+  async function withExpandContext(orm, model, domain, context) {
+    const cfg = EXPAND_CTX[model];
+    if (!cfg || context[cfg[0]]) return context;
+    const [ctxKey, field] = cfg;
+    try {
+      const groups = await orm.readGroup(model, domain, [field], [field], { lazy: true });
+      const ids = groups.map((g) => g[field]?.[0]).filter(Boolean);
+      if (ids.length === 1) return { ...context, [ctxKey]: ids[0] };
+    } catch (e) { console.warn("[pulsantiera] colonne vuote: contesto non calcolato:", e); }
+    return context;
+  }
+
   async function open(b) {
     const env = getEnv();
     if (!env || !mod("@web/core/domain")) return alert("Odoo non ancora caricato: riprova tra un secondo.");
@@ -112,6 +130,7 @@
       domain = withSprint(domain, n);
       name += ` (#${n})`;
     }
+    context = await withExpandContext(orm, b.model, domain, context);
 
     await action.doAction({
       type: "ir.actions.act_window",
@@ -321,6 +340,7 @@
         el("h4", { className: "sep", textContent: "Pulsanti" }),
         ...rows,
         el("div", { className: "acts" }, exportBtn, importBtn, resetBtn),
+        ...trayPosSection(),
         ...PS.backupSection(),
         el("div", { className: "acts" }, el("button", { textContent: "Chiudi", onclick: () => togglePanel("buttons") })));
   }
@@ -329,8 +349,11 @@
   function placePanel() {
     const nav = inTray && document.querySelector(".o_main_navbar");
     panel.classList.toggle("top", !!nav);
-    panel.classList.toggle("center", !!nav && tray.classList.contains("centered"));
+    panel.classList.toggle("center", !!nav && placed === "center");
+    panel.classList.toggle("left", !!nav && placed === "left");
     panel.style.top = nav ? Math.round(nav.getBoundingClientRect().bottom + 6) + "px" : "";
+    // a sinistra il pannello si allinea alle icone
+    panel.style.left = nav && placed === "left" ? Math.round(tray.getBoundingClientRect().left) + "px" : "";
   }
 
   /* ---------- strumenti (icone) ---------- */
@@ -358,8 +381,11 @@
   };
 
   /* gruppo nella barra in alto di Odoo: aperto sta al centro, compresso diventa una freccia a destra accanto alla chat */
-  const TRAY = store("ps-tray-v1", { open: true }, (v) => v && typeof v.open === "boolean");
+  // pos = dove stanno le icone aperte: "left" (dopo i menu di Odoo), "center" o "right" (accanto alla chat)
+  const TRAY_POS = { left: "A sinistra, dopo i menu", center: "Al centro", right: "A destra, accanto alla chat" };
+  const TRAY = store("ps-tray-v1", { open: true, pos: "center" }, (v) => v && typeof v.open === "boolean");
   const trayState = TRAY.load();
+  if (!TRAY_POS[trayState.pos]) trayState.pos = "center";
   const tray = el("div", { id: "ps-tray" });
   let inTray = false;  // strumenti nella barra di Odoo (true) o nella barra in basso (false)
   /* animazione apri/comprimi: le icone svaniscono o compaiono in sequenza, il gruppo scivola tra centro e chat */
@@ -438,10 +464,10 @@
   }
 
   // Al centro c'è posto? Stima la posizione senza spostare nulla (spostare genererebbe mutazioni a ogni giro)
-  function centerFits(nav, systray) {
+  // Spazio libero nella barra di Odoo tra i menu (sinistra) e le icone di sistema (destra)
+  function freeSpace(nav, systray) {
     const n = nav.getBoundingClientRect();
     const w = (tray.isConnected && !tray.classList.contains("collapsed") && tray.offsetWidth) || 220;
-    const left = n.left + n.width / 2 - w / 2, right = left + w;
     let leftEdge = n.left;
     for (const e of nav.querySelectorAll(".o_menu_toggle, .o_menu_brand, .o_menu_sections > *")) {
       const r = e.getBoundingClientRect();
@@ -453,25 +479,63 @@
       const r = e.getBoundingClientRect();
       if (r.width) rightEdge = Math.min(rightEdge, r.left);
     }
-    return left > leftEdge + 16 && right < rightEdge - 16;
+    return { n, w, leftEdge, rightEdge };
+  }
+  // Posizione effettiva: quella scelta se c'è spazio, altrimenti a destra. Compresse stanno sempre a destra.
+  // Stima senza spostare nulla (spostare genererebbe mutazioni a ogni giro).
+  function choosePlace(nav, systray) {
+    if (!trayState.open || trayState.pos === "right") return { place: "right" };
+    const { n, w, leftEdge, rightEdge } = freeSpace(nav, systray);
+    if (trayState.pos === "center") {
+      const left = n.left + n.width / 2 - w / 2;
+      return left > leftEdge + 16 && left + w < rightEdge - 16 ? { place: "center" } : { place: "right" };
+    }
+    const left = leftEdge + 12;
+    return left + w < rightEdge - 16 ? { place: "left", x: Math.round(left - n.left) } : { place: "right" };
   }
 
   // Odoo ridisegna la barra in alto cambiando app: l'observer di main.js richiama questa funzione.
-  // Con force (apri/comprimi, cambio vista, ridimensionamento) ricontrolla anche se al centro c'è spazio.
-  let center = false;
+  // Con force (apri/comprimi, cambio posizione o vista, ridimensionamento) ricalcola anche la posizione.
+  let placed = "right";
   function ensureTray(force = false) {
     const nav = document.querySelector(".o_main_navbar");
     const systray = nav?.querySelector(".o_menu_systray");
-    const misplaced = !systray || tray.parentElement !== (center ? nav : systray);
-    if (systray && (force || misplaced)) center = trayState.open && centerFits(nav, systray);
-    const target = !systray ? null : center ? nav : systray;
+    const floating = placed !== "right";
+    const misplaced = !systray || tray.parentElement !== (floating ? nav : systray);
+    if (systray && (force || misplaced)) {
+      const c = choosePlace(nav, systray);
+      placed = c.place;
+      tray.style.left = c.place === "left" ? `${c.x}px` : "";
+    }
+    const target = !systray ? null : placed !== "right" ? nav : systray;
     if (!target) tray.remove();
-    else if (tray.parentElement !== target) { if (center) nav.append(tray); else systray.prepend(tray); }
-    tray.classList.toggle("centered", !!target && center);
+    else if (tray.parentElement !== target) { if (target === nav) nav.append(tray); else systray.prepend(tray); }
+    tray.dataset.place = target ? placed : "";
     if (tray.isConnected !== inTray) {
       inTray = tray.isConnected;
       render();
     }
+  }
+  function setTrayPos(pos) {
+    trayState.pos = pos;
+    trayState.open = true;
+    TRAY.save(trayState);
+    renderTray();
+    ensureTray(true);
+    syncActive();
+    if (panel) placePanel();
+  }
+
+  // sezione del pannello "+": dove mettere le icone
+  function trayPosSection() {
+    const sel = el("select", {}, ...Object.entries(TRAY_POS).map(([v, t]) => el("option", { value: v, textContent: t })));
+    sel.value = trayState.pos;
+    sel.onchange = () => setTrayPos(sel.value);
+    return [
+      el("h4", { className: "sep", textContent: "Icone degli strumenti" }),
+      el("label", { textContent: "Posizione nella barra in alto" }), sel,
+      el("p", { className: "hint", textContent: "Compresse con la freccia stanno sempre a destra, accanto alla chat. Se nella posizione scelta non c'è spazio, si spostano a destra." }),
+    ];
   }
 
   ensureTray();

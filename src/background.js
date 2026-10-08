@@ -45,11 +45,34 @@
   const bgCfg = STORE.load();
   const saveBg = () => STORE.save(bgCfg);
 
-  const viewKey = () => {
-    const p = new URLSearchParams(location.hash.slice(1));
-    const a = p.get("action");
-    return a ? `a${a}-${p.get("active_id") || 0}` : "home";
+  // Dove sono: vista corrente e app corrente, letti dallo stato di Odoo (l'URL non sempre contiene action=).
+  // Chiavi: "*" = tutte le pagine, "m<id>" = un'app, "a<azione>-<record>" o "x:<modello>:<nome>" = una vista.
+  function currentPlace() {
+    const env = PS.getEnv();
+    const ctrl = env?.services.action?.currentController;
+    const act = ctrl?.action;
+    const hash = new URLSearchParams(location.hash.slice(1));
+    const actionId = (typeof act?.id === "number" && act.id) || Number(hash.get("action")) || null;
+    const activeId = act?.context?.active_id || Number(hash.get("active_id")) || 0;
+    let view = null;
+    if (actionId) view = `a${actionId}-${activeId}`;
+    // azioni senza id (es. i pulsanti della barra): modello + nome, senza il numero di sprint
+    else if (act?.res_model && act?.name) view = `x:${act.res_model}:${String(act.name).replace(/\s*\(#\d+\)$/, "")}`;
+    const viewName = document.querySelector(".o_breadcrumb .active, .o_last_breadcrumb_item")?.textContent.trim()
+        || ctrl?.displayName || act?.name || "questa vista";
+    let app = null;
+    try { app = env?.services.menu?.getCurrentApp?.() || null; } catch { /* menu non pronto */ }
+    return { view, viewName, app: app ? `m${app.id}` : null, appName: app?.name || null };
+  }
+  // la vista vince sull'app, l'app su "tutte le pagine"
+  const activeScope = (pl) => [pl.view, pl.app].find((k) => k && bgCfg.scopes[k]) || "*";
+
+  // -80…80: negativo = sbiancamento (velo bianco), positivo = oscuramento (velo nero)
+  const veilOf = (dim) => {
+    const v = Math.max(-80, Math.min(80, Number(dim ?? 30))) / 100;
+    return v < 0 ? `rgba(255,255,255,${-v})` : `rgba(0,0,0,${v})`;
   };
+  const veilText = (v) => (v < 0 ? ` schiarisci ${-v}%` : v > 0 ? ` scurisci ${v}%` : " nessuno");
 
   // Risoluzione utile per questo schermo (tiene conto di HiDPI / zoom di sistema)
   const screenNeed = () => Math.ceil(Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1));
@@ -80,8 +103,7 @@
 
   let bgSig = null, bgUrl = null;
   async function applyBg() {
-    const k = viewKey();
-    const scopeKey = bgCfg.scopes[k] ? k : "*";
+    const scopeKey = activeScope(currentPlace());
     const sc = bgCfg.scopes[scopeKey];
     const sig = JSON.stringify([scopeKey, sc, bgCfg.kanbanOnly, bgCfg.glass]);
     if (sig === bgSig) return;
@@ -103,24 +125,27 @@
     } catch (e) { console.warn("[pulsantiera] sfondo:", e); }
     if (!img) { delete root.dataset.psBg; delete root.dataset.psGlass; return; }
     root.style.setProperty("--ps-bg-img", img);
-    root.style.setProperty("--ps-bg-dim", String((sc.dim ?? 30) / 100));
+    root.style.setProperty("--ps-bg-veil", veilOf(sc.dim));
     root.dataset.psBg = bgCfg.kanbanOnly ? "kanban" : "all";
     if (bgCfg.glass) root.dataset.psGlass = "1"; else delete root.dataset.psGlass;
   }
   const reapplyBg = () => { bgSig = null; return applyBg(); };
 
   async function renderBg(panel) {
-    const curKey = viewKey();
-    const curName = document.querySelector(".o_breadcrumb .active, .o_last_breadcrumb_item")?.textContent.trim() || "questa vista";
+    const pl = currentPlace();
+    const mark = (k) => (bgCfg.scopes[k] ? " ●" : "");  // ● = ha già uno sfondo
     const scopeSel = el("select", {},
-        el("option", { value: "*", textContent: "Tutte le viste" }),
-        curKey !== "home" ? el("option", { value: curKey, textContent: `Solo "${curName}"` }) : null);
-    scopeSel.value = bgCfg.scopes[curKey] ? curKey : "*";
+        el("option", { value: "*", textContent: `Tutte le pagine${mark("*")}` }),
+        pl.app ? el("option", { value: pl.app, textContent: `Tutta l'app "${pl.appName}"${mark(pl.app)}` }) : null,
+        pl.view ? el("option", { value: pl.view, textContent: `Solo "${pl.viewName}"${mark(pl.view)}` }) : null);
+    scopeSel.value = activeScope(pl);
     const cur = () => bgCfg.scopes[scopeSel.value];
 
-    const dimIn = el("input", { type: "range", min: "0", max: "80", step: "5" });
+    const dimIn = el("input", { type: "range", min: "-80", max: "80", step: "5" });
+    dimIn.setAttribute("list", "ps-dim-ticks");
+    const ticks = el("datalist", { id: "ps-dim-ticks" }, el("option", { value: "0" }));
     const dimOut = el("span", { className: "hint" });
-    const syncDim = () => { dimIn.value = String(cur()?.dim ?? 30); dimOut.textContent = ` ${dimIn.value}%`; };
+    const syncDim = () => { dimIn.value = String(cur()?.dim ?? 30); dimOut.textContent = veilText(Number(dimIn.value)); };
     syncDim();
 
     async function setScope(sc) {
@@ -170,7 +195,7 @@
     })()) });
 
     dimIn.oninput = () => {
-      dimOut.textContent = ` ${dimIn.value}%`;
+      dimOut.textContent = veilText(Number(dimIn.value));
       const c = cur();
       if (c) { c.dim = Number(dimIn.value); saveBg(); reapplyBg(); }
     };
@@ -179,11 +204,13 @@
     panel.replaceChildren(
         el("h4", { textContent: "Sfondo" }),
         el("label", { textContent: "Applica a" }), scopeSel,
+        el("p", { className: "hint", textContent: "La vista vince sull'app, l'app su tutte le pagine. ● = ha già uno sfondo." }),
         el("label", { textContent: "Sfumature" }), tiles,
         el("label", { textContent: "Tinta unita" }), colorIn,
         el("label", { textContent: "Immagine dal computer" }), fileIn,
         el("label", { textContent: "Immagine da link" }), el("div", { className: "inline" }, urlIn, urlBtn),
-        el("label", {}, "Oscuramento", dimOut), dimIn,
+        el("label", {}, "Sbiancamento / oscuramento:", dimOut), dimIn, ticks,
+        el("div", { className: "range-ends" }, el("span", { textContent: "Più chiaro" }), el("span", { textContent: "Più scuro" })),
         chk("Solo nelle viste kanban", bgCfg.kanbanOnly, toggle("kanbanOnly")),
         chk("Colonne semitrasparenti", bgCfg.glass, toggle("glass")),
         ...PS.lookControls(),

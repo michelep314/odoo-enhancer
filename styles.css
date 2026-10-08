@@ -104,7 +104,7 @@
 
 /* ---------- Sfondo ---------- */
 html[data-ps-bg="all"] .o_action_manager,
-html[data-ps-bg="kanban"] .o_action_manager:has(.o_kanban_view){background:linear-gradient(rgba(0,0,0,var(--ps-bg-dim)),rgba(0,0,0,var(--ps-bg-dim))),
+html[data-ps-bg="kanban"] .o_action_manager:has(.o_kanban_view){background:linear-gradient(var(--ps-bg-veil,rgba(0,0,0,.3)),var(--ps-bg-veil,rgba(0,0,0,.3))),
   var(--ps-bg-img) center/cover no-repeat!important}
 html[data-ps-bg="all"] .o_action_manager :is(.o_view_controller,.o_content,.o_kanban_renderer,.o_kanban_group,.o_kanban_header),
 html[data-ps-bg="kanban"] .o_action_manager:has(.o_kanban_view) :is(.o_view_controller,.o_content,.o_kanban_renderer,.o_kanban_group,.o_kanban_header){background:transparent!important}
@@ -114,6 +114,7 @@ html[data-ps-glass][data-ps-bg="kanban"] .o_action_manager:has(.o_kanban_view) .
 html[data-ps-glass][data-ps-bg="all"] .o_action_manager .o_kanban_header,
 html[data-ps-glass][data-ps-bg="kanban"] .o_action_manager:has(.o_kanban_view) .o_kanban_header{background:rgba(18,20,28,.8)!important;backdrop-filter:blur(6px)}
 #ps-panel input[type=range]{padding:0;border:0;background:none;accent-color:#714b67}
+#ps-panel .range-ends{display:flex;justify-content:space-between;margin-top:2px;color:#8d90a0;font-size:11px}
 #ps-panel input[type=color]{height:34px;padding:2px;cursor:pointer}
 #ps-panel input[type=file]{padding:5px}
 #ps-panel .bg-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
@@ -179,9 +180,18 @@ html[data-ps-headers][data-ps-headall] .o_action_manager .o_kanban_view .o_kanba
   box-shadow:calc(var(--ps-head-ext,8px) * -1) 0 0 var(--ps-head),var(--ps-head-ext,8px) 0 0 var(--ps-head)!important}
 html[data-ps-headall] .o_kanban_group>.o_kanban_header :is(.o_column_title,.o_kanban_counter,.o_kanban_counter_side,
   .ps-colbtn,.o_kanban_config,.o_kanban_header_title,.o_kanban_quick_add,i,.fa){color:var(--ps-head-fg)!important}
-html[data-ps-look] .o_kanban_view .o_kanban_record{border-radius:var(--ps-radius)!important;margin-bottom:var(--ps-gap)!important}
+html[data-ps-look] .o_kanban_view .o_kanban_record{margin-bottom:var(--ps-gap)!important}
+html[data-ps-round] .o_kanban_view .o_kanban_record{border-radius:var(--ps-radius)!important}
+/* ritaglia copertina, striscia colorata e contenuti interni sugli angoli (non con il menu ⋮ aperto, per non tagliarlo) */
+html[data-ps-round] .o_kanban_view .o_kanban_record:not(:has(.o-dropdown--menu,.dropdown-menu.show)){overflow:hidden}
+/* spazio 0: pila continua, arrotondate solo la prima (in alto) e l'ultima (in basso) */
+html[data-ps-round][data-ps-stack] .o_kanban_view .o_kanban_group>.o_kanban_record{border-radius:0!important}
+html[data-ps-round][data-ps-stack] .o_kanban_view .o_kanban_group>.o_kanban_record[data-ps-first]{
+  border-top-left-radius:var(--ps-radius)!important;border-top-right-radius:var(--ps-radius)!important}
+html[data-ps-round][data-ps-stack] .o_kanban_view .o_kanban_group>.o_kanban_record[data-ps-last]{
+  border-bottom-left-radius:var(--ps-radius)!important;border-bottom-right-radius:var(--ps-radius)!important}
 html[data-ps-look] .o_kanban_view .o_kanban_group{border-radius:var(--ps-col-radius)!important}
-html[data-ps-look][data-ps-shadow] .o_kanban_view .o_kanban_record{box-shadow:0 1px 2px #0007,0 0 0 1px #0002!important}
+html[data-ps-shadow] .o_kanban_view .o_kanban_record{box-shadow:0 1px 2px #0007,0 0 0 1px #0002!important}
 html[data-ps-look] .ps-us{border-radius:max(3px,calc(var(--ps-radius) * .45))}
 
 .ps-colbtn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin:0 2px;
@@ -277,12 +287,15 @@ html[data-ps-look] .ps-us{border-radius:max(3px,calc(var(--ps-radius) * .45))}
   width:8px;height:8px;border-radius:50%;background:#F06050;box-shadow:0 0 0 2px var(--NavBar-background-color,#262a36)}
 #ps-tray.collapsed.ps-has-new .ps-tray-toggle{opacity:1}
 /* aperto: al centro della barra di Odoo (compresso torna a destra, accanto alla chat) */
-.o_main_navbar:has(> #ps-tray.centered){position:relative}
-#ps-tray.centered{position:absolute;top:5px;bottom:5px;left:50%;z-index:1;height:auto;margin:0;padding:0 4px;
-  transform:translateX(-50%);border-right:0;border-radius:8px;background:color-mix(in srgb,currentColor 7%,transparent)}
+/* aperte al centro o a sinistra (dopo i menu): sovrapposte alla barra, con una leggera pastiglia di sfondo */
+.o_main_navbar:has(> #ps-tray:is([data-place="center"],[data-place="left"])){position:relative}
+#ps-tray:is([data-place="center"],[data-place="left"]){position:absolute;top:5px;bottom:5px;z-index:1;height:auto;margin:0;
+  padding:0 4px;border-right:0;border-radius:8px;background:color-mix(in srgb,currentColor 7%,transparent)}
+#ps-tray[data-place="center"]{left:50%;transform:translateX(-50%)}
 /* pannello aperto dalla barra in alto: sotto le icone (a destra, o centrato se le icone sono al centro) */
 #ps-panel.top{left:auto;right:12px;bottom:auto;max-height:calc(100vh - 90px)}
 #ps-panel.top.center{left:50%;right:auto;transform:translateX(-50%)}
+#ps-panel.top.left{right:auto}
 /* barra in basso: senza scorciatoie non serve */
 #ps-bar.empty{display:none}
 /* strumenti nella barra in basso (solo se la barra di Odoo non c'è) */

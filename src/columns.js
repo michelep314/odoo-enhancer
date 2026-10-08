@@ -269,12 +269,40 @@
     }
   }
 
+  // Con spazio 0 le schede visibili formano pile (separate dalle testate US):
+  // segno la prima e l'ultima di ogni pila, le sole con gli angoli arrotondati
+  const isCard = (n) => n.classList.contains("o_kanban_record") && !n.classList.contains("o_kanban_ghost");
+  const isShown = (n) => !n.hidden && !n.dataset.psFiltered && !n.dataset.psSearch && !n.dataset.psCollapsed;
+  function markStackEnds(g) {
+    const cards = [...g.children].filter(isCard);
+    if (!document.documentElement.dataset.psStack) {
+      for (const c of cards) { setFlag(c, "psFirst", false); setFlag(c, "psLast", false); }
+      return;
+    }
+    const sorted = !!g.dataset.psSort;  // con l'ordinamento attivo gli elementi senza order vanno in fondo
+    const seq = [...g.children]
+        .filter((n) => (isCard(n) || n.classList.contains("ps-usgroup")) && isShown(n))
+        .map((n, i) => [n, n.style.order !== "" ? Number(n.style.order) : sorted ? 100000 : 0, i])
+        .sort((a, b) => a[1] - b[1] || a[2] - b[2])
+        .map(([n]) => n);
+    const first = new Set(), last = new Set();
+    let prev = null;
+    for (const n of seq) {
+      if (!isCard(n)) { if (prev) last.add(prev); prev = null; continue; }
+      if (!prev) first.add(n);
+      prev = n;
+    }
+    if (prev) last.add(prev);
+    for (const c of cards) { setFlag(c, "psFirst", first.has(c)); setFlag(c, "psLast", last.has(c)); }
+  }
+
   function decorateColumn(g, name, recs) {
     const lname = name.toLowerCase(), cfg = colSettings(name);
     ensureColBtn(g, name, !!colFilters[lname] || !!cfg.groupUs);
     applyHideAndFilter(recs, cfg, colFilters[lname]);
     renderPrioSummary(g, cfg, lname, recs);
     applyOrder(g, cfg, lname, recs);
+    markStackEnds(g);
   }
 
   function decorateColumns(records) {
@@ -616,16 +644,19 @@
       root.style.removeProperty("--ps-head-fg");
       equalizeHeads();
     }
-    if (!l.on) { delete root.dataset.psLook; delete root.dataset.psShadow; return; }
-    root.dataset.psLook = "1";
+    // angoli e ombra delle schede sono indipendenti; "on" regola spazio e angoli delle colonne
+    setFlag(root, "psRound", l.round !== false && Number(l.radius) > 0);
+    setFlag(root, "psShadow", !!l.shadow);
     root.style.setProperty("--ps-radius", `${l.radius}px`);
+    setFlag(root, "psLook", !!l.on);
+    setFlag(root, "psStack", !!l.on && Number(l.gap) === 0);  // schede attaccate: si arrotondano solo le estremità
+    if (!l.on) return;
     root.style.setProperty("--ps-col-radius", `${l.colRadius}px`);
     root.style.setProperty("--ps-gap", `${l.gap}px`);
-    if (l.shadow) root.dataset.psShadow = "1"; else delete root.dataset.psShadow;
   }
   function lookControls() {
     const l = colCfg.look;
-    const upd = () => { saveCols(); applyLook(); };
+    const upd = () => { saveCols(); applyLook(); PS.decorate(); };
     const rng = (label, key, max) => {
       const out = el("span", { className: "hint", textContent: ` ${l[key]} px` });
       const i = el("input", { type: "range", min: "0", max: String(max), step: "1", value: String(l[key]) });
@@ -634,11 +665,13 @@
     };
     return [
       el("h4", { className: "sep", textContent: "Schede e colonne" }),
-      chk("Stile arrotondato (tipo Trello)", l.on, (v) => { l.on = v; upd(); }),
-      ...rng("Angoli delle schede", "radius", 20),
-      ...rng("Angoli delle colonne", "colRadius", 24),
-      ...rng("Spazio tra le schede", "gap", 20),
+      chk("Angoli arrotondati delle schede", l.round !== false, (v) => { l.round = v; upd(); }),
+      ...rng("Raggio degli angoli delle schede", "radius", 20),
       chk("Ombra sotto le schede", l.shadow, (v) => { l.shadow = v; upd(); }),
+      chk("Spazio e colonne personalizzati (tipo Trello)", l.on, (v) => { l.on = v; upd(); }),
+      ...rng("Spazio tra le schede", "gap", 20),
+      ...rng("Angoli delle colonne", "colRadius", 24),
+      el("p", { className: "hint", textContent: "Con spazio 0 px le schede formano una pila: si arrotondano solo la prima e l'ultima." }),
     ];
   }
 

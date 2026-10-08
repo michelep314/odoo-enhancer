@@ -9,6 +9,20 @@
   // dalla più recente alla più vecchia; "how" (facoltativo) dice dove trovare la funzione
   const CHANGELOG = [
     {
+      version: "1.16", date: "2026-10-07",
+      items: [
+        { title: "Sfondo per app o per vista", text: "Puoi dare uno sfondo diverso a ogni app (Helpdesk, Progetti, Fogli ore…) o a una singola vista; la vista vince sull'app, l'app su tutte le pagine. Il ● nell'elenco indica dove c'è già uno sfondo.",
+          how: "Pannello Sfondo → Applica a" },
+        { title: "Sbiancamento o oscuramento", text: "Un solo cursore: verso sinistra schiarisce l'immagine di sfondo, verso destra la scurisce.",
+          how: "Pannello Sfondo" },
+        { title: "Posizione delle icone", text: "Scegli se tenere le icone degli strumenti a sinistra (dopo i menu di Odoo), al centro o a destra accanto alla chat. Compresse restano sempre a destra.",
+          how: "Pannello + → Icone degli strumenti" },
+        { title: "Angoli delle schede", text: "Gli angoli arrotondati si regolano a parte, indipendenti dall'ombra e dallo stile delle colonne, e ritagliano anche copertine e strisce colorate. Con spazio 0 px le schede formano una pila: si arrotondano solo la prima e l'ultima.",
+          how: "Pannello Sfondo → Schede e colonne" },
+        { title: "Colonne vuote visibili", text: "Aprendo un pulsante della barra, le fasi senza schede restano visibili quando tutte le schede appartengono allo stesso progetto o team." },
+      ],
+    },
+    {
       version: "1.15", date: "2026-10-07",
       items: [
         { title: "Strumenti nella barra di Odoo", text: "Ricerca, sfondo, fogli ore, gestione pulsanti e novità ora sono icone al centro della barra in alto. La freccia le comprime in un solo pulsante a destra, accanto alla chat; in basso restano solo le tue scorciatoie.",
