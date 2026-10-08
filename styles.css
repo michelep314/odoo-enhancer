@@ -23,17 +23,31 @@
 #ps-panel .hint{margin:6px 0 0;color:#8d90a0;font-size:12px}
 #ps-panel .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 #ps-panel .primary{background:#714b67;color:#fff}
-#ps-panel .row{display:flex;align-items:center;gap:4px;padding:5px 0;border-top:1px solid #3a3f4d}
-#ps-panel .row span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #ps-panel .icon{padding:4px 9px}
+/* elenco dei pulsanti: righe compatte, strumenti in linea */
+#ps-panel .ps-btnlist{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+#ps-panel .ps-btnrow{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 4px;border-radius:8px}
+#ps-panel .ps-btnrow:hover{background:#2f3442}
+#ps-panel .ps-btnrow .num{flex:none;width:22px;height:22px;display:grid;place-items:center;border-radius:50%;
+  background:#1d2029;color:#8d90a0;font-size:11px;font-weight:600}
+#ps-panel .ps-btnrow .name{flex:1;min-width:0;display:flex;flex-direction:column}
+#ps-panel .ps-btnrow .label,#ps-panel .ps-btnrow .meta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ps-panel .ps-btnrow .label{color:#e6e6ea;font-weight:500}
+#ps-panel .ps-btnrow .meta{color:#8d90a0;font-size:11px}
+#ps-panel .ps-btnrow select.mini{flex:none;max-width:110px;padding:3px 6px;font-size:12px}
+#ps-panel .ps-btnrow .tools{flex:none;display:flex;gap:2px}
+#ps-panel .ps-btnrow .icon{width:26px;height:26px;padding:0;display:grid;place-items:center;
+  background:transparent;color:#b8bac4;font-size:14px;line-height:1}
+#ps-panel .ps-btnrow .icon:hover:not(:disabled){background:#3a3f4d;color:#fff}
+#ps-panel .ps-btnrow .icon.del:hover:not(:disabled){background:#c0392b;color:#fff}
+#ps-panel .ps-btnrow .icon:disabled{opacity:.25}
 #ps-panel button:disabled{opacity:.35;cursor:default}
 #ps-panel label.chk{display:flex;align-items:center;gap:8px;margin:6px 0;color:#e6e6ea;cursor:pointer}
 #ps-panel label.chk input{width:auto;margin:0}
 #ps-panel .inline{display:flex;gap:6px}
 #ps-panel .inline select{flex:1}
 #ps-panel .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
-#ps-panel .row select.mini{flex:none;max-width:130px}
-#ps-panel .row button,#ps-panel .acts button,#ps-panel .inline button{flex:none;white-space:nowrap}
+#ps-panel .acts button,#ps-panel .inline button{flex:none;white-space:nowrap}
 #ps-panel .inline input,#ps-panel .inline select{flex:1;min-width:0}
 #ps-bar button.active{background:#714b67;color:#fff}
 #ps-panel .days{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}

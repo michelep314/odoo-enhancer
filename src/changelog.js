@@ -13,6 +13,8 @@
       items: [
         { title: "Ricerca nelle descrizioni", text: "La ricerca rapida guarda anche descrizione, note e criteri di accettazione. Più parole vanno tutte trovate, anche in campi diversi: \"alunno sospeso\" trova le schede con alunno e sospeso, come in Trello. Tra virgolette cerchi la frase esatta.",
           how: "Premi / in una vista kanban, oppure 🔍 nella barra" },
+        { title: "Elenco dei pulsanti più ordinato", text: "Ogni pulsante sta su una riga compatta, con modello e sprint sotto il nome e gli strumenti in linea. Ora puoi anche spostarlo giù, oltre che su.",
+          how: "Pannello + → Pulsanti" },
       ],
     },
     {

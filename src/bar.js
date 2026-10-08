@@ -275,27 +275,26 @@
       const vSel = el("select", { className: "mini", title: "Vista iniziale",
         onchange: () => { b.view = vSel.value; save(); } });
       fillViewSelect(vSel, rowModes, b.view);
-      return el("div", { className: "row" },
-          el("span", {
-            textContent: b.label,
-            title: `${b.model} ${b.domain}${b.sprint != null ? " + " + sprintLabel(b.sprint) : ""}`,
-          }),
+      const swap = (j) => { [buttons[j], buttons[i]] = [buttons[i], buttons[j]]; commit(); };
+      // "row" no: in Odoo è la griglia di Bootstrap e mette ogni figlio a tutta larghezza
+      return el("div", { className: "ps-btnrow" },
+          el("span", { className: "num", textContent: String(i + 1) }),
+          el("span", { className: "name" },
+              el("span", { className: "label", textContent: b.label }),
+              el("span", { className: "meta", textContent: `${b.model}${b.sprint != null ? " · " + sprintLabel(b.sprint) : ""}` })),
           vSel,
-          el("button", {
-            className: "icon", textContent: "↑", title: "Sposta su", disabled: i === 0,
-            onclick: () => { [buttons[i - 1], buttons[i]] = [buttons[i], buttons[i - 1]]; commit(); },
-          }),
-          el("button", {
-            className: "icon", textContent: "✎", title: "Rinomina",
-            onclick: () => {
-              const v = prompt("Nuovo nome", b.label);
-              if (v?.trim()) { b.label = v.trim(); commit(); }
-            },
-          }),
-          el("button", {
-            className: "icon", textContent: "×", title: "Elimina",
-            onclick: () => { if (confirm(`Eliminare "${b.label}"?`)) { buttons.splice(i, 1); commit(); } },
-          }));
+          el("span", { className: "tools" },
+              el("button", { className: "icon", textContent: "↑", title: "Sposta su", disabled: i === 0,
+                onclick: () => swap(i - 1) }),
+              el("button", { className: "icon", textContent: "↓", title: "Sposta giù", disabled: i === buttons.length - 1,
+                onclick: () => swap(i + 1) }),
+              el("button", { className: "icon", textContent: "✎", title: "Rinomina",
+                onclick: () => {
+                  const v = prompt("Nuovo nome", b.label);
+                  if (v?.trim()) { b.label = v.trim(); commit(); }
+                } }),
+              el("button", { className: "icon del", textContent: "×", title: "Elimina",
+                onclick: () => { if (confirm(`Eliminare "${b.label}"?`)) { buttons.splice(i, 1); commit(); } } })));
     });
 
     const exportBtn = el("button", {
@@ -338,7 +337,8 @@
         el("p", { className: "hint", textContent: "L’URL indica menu, vista e progetto; il preferito aggiunge i filtri. Puoi usarli anche da soli. Con Sprint corrente o precedente, il numero salvato nel preferito viene sostituito da quello calcolato al clic." }),
         el("div", { className: "acts" }, addBtn),
         el("h4", { className: "sep", textContent: "Pulsanti" }),
-        ...rows,
+        rows.length ? el("div", { className: "ps-btnlist" }, ...rows)
+            : el("p", { className: "hint", textContent: "Nessun pulsante: aggiungine uno qui sopra." }),
         el("div", { className: "acts" }, exportBtn, importBtn, resetBtn),
         ...trayPosSection(),
         ...PS.backupSection(),
