@@ -4,6 +4,11 @@ Tutte le modifiche rilevanti di Odoo Enhancer. Il formato segue [Keep a Changelo
 
 > Quando si pubblica una versione aggiornare **insieme**: `manifest.json` (`version`), `src/changelog.js` (pannello ✨ Novità) e questo file.
 
+## [1.18] - 2026-10-08
+
+### Aggiunto
+- **Spostare un intero blocco US** in un'altra colonna: con "Raggruppa per user story", trascinando la testata della US su un'altra colonna (anche chiusa) si spostano tutte le schede visibili del blocco, con una sola scrittura sul campo di raggruppamento (es. `stage_id`) e conferma prima di procedere. La colonna di destinazione è evidenziata durante il trascinamento. Escluse le schede nascoste da filtri o ricerca; se la colonna non è caricata del tutto, lo dice la conferma. Non disponibile se le colonne sono date o campi many2many.
+
 ## [1.17] - 2026-10-08
 
 ### Aggiunto

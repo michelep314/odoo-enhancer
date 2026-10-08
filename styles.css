@@ -181,6 +181,11 @@ html[data-ps-glass][data-ps-bg="kanban"] .o_action_manager:has(.o_kanban_view) .
   padding:6px 8px;border:0;border-left:4px solid var(--ps-us-c);border-radius:6px;background:rgba(127,127,127,.14);
   color:inherit;font:600 12.5px/1.3 system-ui,sans-serif;text-align:left;cursor:pointer}
 .o_kanban_group>.ps-usgroup[hidden]{display:none!important}
+/* trascinamento di un blocco US: colonna di destinazione evidenziata */
+.o_kanban_group>.ps-usgroup.ps-dragging{opacity:.5}
+html[data-ps-usdrag] .o_kanban_view .o_kanban_group{transition:background-color .12s}
+html[data-ps-usdrag] .o_kanban_view .o_kanban_group.ps-usdrop{outline:2px dashed #017e84!important;outline-offset:-2px;
+  background-color:rgba(1,126,132,.16)!important}
 .o_kanban_group>.ps-usgroup:hover{background:rgba(127,127,127,.24)}
 .o_kanban_group>.ps-usgroup:focus-visible{outline:2px solid #017e84;outline-offset:1px}
 .ps-usgroup .chev{width:10px;opacity:.75}

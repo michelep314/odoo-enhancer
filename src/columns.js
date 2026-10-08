@@ -191,8 +191,93 @@
       PS.decorate();
     });
     sep.dataset.key = k;
+    // trascinando la testata si sposta tutto il blocco in un'altra colonna (isolate blocca il trascinamento di Odoo)
+    sep.draggable = true;
+    sep.addEventListener("dragstart", (e) => {
+      usDrag = { g, k };
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", sep.querySelector(".name")?.textContent || k);
+      sep.classList.add("ps-dragging");
+      document.documentElement.dataset.psUsdrag = "1";
+    });
+    sep.addEventListener("dragend", () => { sep.classList.remove("ps-dragging"); endUsDrag(); });
     g.append(sep);
     return sep;
+  }
+
+  /* spostamento di un blocco US: trascino la testata su un'altra colonna (anche chiusa) */
+  let usDrag = null, overCol = null;
+  const markOver = (t) => {
+    if (overCol === t) return;
+    overCol?.classList.remove("ps-usdrop");
+    t?.classList.add("ps-usdrop");
+    overCol = t;
+  };
+  function endUsDrag() {
+    usDrag = null;
+    markOver(null);
+    delete document.documentElement.dataset.psUsdrag;
+  }
+  const dropCol = (e) => {
+    const t = usDrag && e.target.closest?.(".o_kanban_view .o_kanban_group");
+    return t && t !== usDrag.g ? t : null;
+  };
+  document.addEventListener("dragover", (e) => {
+    if (!usDrag) return;
+    const t = dropCol(e);
+    markOver(t);
+    if (t) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }
+  });
+  document.addEventListener("drop", (e) => {
+    const t = dropCol(e);
+    if (!t) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const { g, k } = usDrag;
+    endUsDrag();
+    moveUsBlock(g, k, t).catch(PS.fail);
+  });
+
+  // lista raggruppata del kanban (modello Owl) e gruppo che corrisponde a una colonna del DOM
+  function kanbanList() {
+    let list = null;
+    PS.walkOwl((c) => {
+      const l = c.props?.list;
+      if (l && Array.isArray(l.groups) && l.groupBy?.length) { list = l; return true; }
+      return false;
+    });
+    return list;
+  }
+  function groupOf(list, g) {
+    const title = g.querySelector(".o_column_title")?.textContent.trim();
+    const byName = list.groups.filter((gr) => String(gr.displayName ?? "").trim() === title);
+    if (byName.length === 1) return byName[0];
+    const cols = [...g.parentElement.querySelectorAll(":scope > .o_kanban_group")];
+    return list.groups[cols.indexOf(g)] || null;  // nomi doppi: stesso ordine di Odoo
+  }
+
+  async function moveUsBlock(fromG, k, toG) {
+    const list = kanbanList();
+    const by = String(list?.groupBy?.[0] || "");
+    const field = by.split(":")[0];
+    const src = list && groupOf(list, fromG), dst = list && groupOf(list, toG);
+    const type = list?.fields?.[field]?.type;
+    if (!src || !dst || !field || by.includes(":") || ["many2many", "one2many"].includes(type)) {
+      return alert("In questa vista non riesco a spostare il blocco: le colonne non corrispondono a un campo modificabile.");
+    }
+    // le schede del blocco visibili (escluse quelle nascoste da filtro o ricerca; quelle del gruppo chiuso contano)
+    const recs = kanbanRecords().filter(([c, r]) => c.closest(".o_kanban_group") === fromG && DECO_MODELS.includes(r.resModel)
+        && !c.dataset.psFiltered && !c.dataset.psSearch && (k === "__none" ? !usOf(r) : !!usOf(r) && usKey(usOf(r)) === k));
+    if (!recs.length) return;
+    const label = k === "__none" ? "senza US" : `di ${usOf(recs[0][1])}`;
+    const loaded = src.list?.records?.length ?? recs.length;
+    const note = src.count > loaded ? "\n\nLa colonna non è caricata del tutto: vengono spostate solo le schede già visibili." : "";
+    if (!confirm(`Spostare ${recs.length} ${recs.length === 1 ? "scheda" : "schede"} ${label} da "${src.displayName}" a "${dst.displayName}"?${note}`)) return;
+    const { orm, notification } = PS.getEnv().services;
+    const value = Array.isArray(dst.value) ? dst.value[0] : dst.value ?? false;
+    await orm.write(recs[0][1].resModel, recs.map(([, r]) => r.resId), { [field]: value });
+    await (list.model?.load ? list.model.load() : list.load());
+    notification?.add(`${recs.length} ${recs.length === 1 ? "scheda spostata" : "schede spostate"} in "${dst.displayName}".`, { type: "success" });
   }
 
   function paintUsSep(sep, k, gr, visible, isClosed) {
@@ -206,7 +291,7 @@
     sep.style.setProperty("--ps-us-c", hex);
     sep.style.setProperty("--ps-us-fg", fg);
     sep.setAttribute("aria-expanded", String(!isClosed));
-    sep.title = isClosed ? "Clic per mostrare le schede" : "Clic per nascondere le schede";
+    sep.title = `${isClosed ? "Clic per mostrare le schede" : "Clic per nascondere le schede"}; trascina per spostare il blocco in un'altra colonna`;
     sep.replaceChildren(
         el("span", { className: "chev", textContent: isClosed ? "▸" : "▾" }),
         el("span", { className: "name", textContent: gr.label }),

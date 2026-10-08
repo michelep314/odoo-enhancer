@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Odello",
-  "version": "1.17",
+  "version": "1.18",
   "description": "Nuove funzionalita' per personalizzare odoo",
   "content_scripts": [
     {

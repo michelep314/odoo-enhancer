@@ -267,7 +267,7 @@
     SPRINT_FIELD, TASK, TS_MODEL,
     getEnv, mod, Domain, el, fail, isolate, chk, setFlag, store, storeKeys, popover,
     pad, iso, parseIso, fmtDay, fmtHours, eachDay, parseHours,
-    evalCtx, sprintValue, recText, kanbanRecords, findRecord,
+    evalCtx, sprintValue, recText, kanbanRecords, findRecord, walkOwl,
     ICONS, svg, PALETTE, rgba, darkText, colorHex, PRIO, PRIO_ORDER, prioOf, prioButton,
     savePrio, resetPrio, prioSig, prioHex,
   });

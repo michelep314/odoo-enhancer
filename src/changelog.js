@@ -9,6 +9,13 @@
   // dalla più recente alla più vecchia; "how" (facoltativo) dice dove trovare la funzione
   const CHANGELOG = [
     {
+      version: "1.18", date: "2026-10-08",
+      items: [
+        { title: "Sposta un'intera user story", text: "Con il raggruppamento per user story, trascina la testata di una US su un'altra colonna: tutte le sue schede si spostano insieme, dopo una conferma.",
+          how: "Filtro della colonna → Raggruppa per user story, poi trascina la testata" },
+      ],
+    },
+    {
       version: "1.17", date: "2026-10-08",
       items: [
         { title: "Ricerca nelle descrizioni", text: "La ricerca rapida guarda anche descrizione, note e criteri di accettazione. Più parole vanno tutte trovate, anche in campi diversi: \"alunno sospeso\" trova le schede con alunno e sospeso, come in Trello. Tra virgolette cerchi la frase esatta.",
