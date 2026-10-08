@@ -185,6 +185,14 @@
     panelKind = null;
     syncActive();
   }
+  // clic fuori dal pannello o Esc: si chiude. I pulsanti della barra che aprono pannelli lo gestiscono da sé
+  // (ri-cliccarli lo chiude, un altro pannello lo sostituisce)
+  document.addEventListener("mousedown", (e) => {
+    if (panel && !panel.contains(e.target) && !e.target.closest?.("[data-panel]")) closePanel();
+  }, true);
+  document.addEventListener("keydown", (e) => {
+    if (panel && e.key === "Escape" && !e.defaultPrevented) closePanel();  // dopo gli Esc gestiti nei campi del pannello
+  });
   async function togglePanel(kind = "buttons") {
     const same = panel && panelKind === kind;
     closePanel();

@@ -13,6 +13,7 @@
       items: [
         { title: "Sposta un'intera user story", text: "Con il raggruppamento per user story, trascina la testata di una US su un'altra colonna: tutte le sue schede si spostano insieme, dopo una conferma.",
           how: "Filtro della colonna → Raggruppa per user story, poi trascina la testata" },
+        { title: "Pannelli più comodi", text: "I pannelli degli strumenti si chiudono cliccando fuori o premendo Esc." },
       ],
     },
     {
