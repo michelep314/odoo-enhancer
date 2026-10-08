@@ -9,7 +9,7 @@
   // dalla più recente alla più vecchia; "how" (facoltativo) dice dove trovare la funzione
   const CHANGELOG = [
     {
-      version: "1.16", date: "2026-10-07",
+      version: "1.16", date: "2026-10-08",
       items: [
         { title: "Sfondo per app o per vista", text: "Puoi dare uno sfondo diverso a ogni app (Helpdesk, Progetti, Fogli ore…) o a una singola vista; la vista vince sull'app, l'app su tutte le pagine. Il ● nell'elenco indica dove c'è già uno sfondo.",
           how: "Pannello Sfondo → Applica a" },
@@ -19,6 +19,10 @@
           how: "Pannello + → Icone degli strumenti" },
         { title: "Angoli delle schede", text: "Gli angoli arrotondati si regolano a parte, indipendenti dall'ombra e dallo stile delle colonne, e ritagliano anche copertine e strisce colorate. Con spazio 0 px le schede formano una pila: si arrotondano solo la prima e l'ultima.",
           how: "Pannello Sfondo → Schede e colonne" },
+        { title: "Intestazioni liquid glass", text: "Una fascia di vetro smerigliato su tutte le intestazioni: sfoca lo sfondo e il testo resta leggibile su qualsiasi immagine.",
+          how: "Filtro della colonna → Colore intestazioni → casella di vetro" },
+        { title: "User story attaccate alle schede", text: "Con il raggruppamento per user story la testata della US è unita alle sue schede, con gli angoli squadrati dove si toccano." },
+        { title: "Intestazioni sempre allineate e leggibili", text: "Le schede partono alla stessa altezza in ogni colonna anche senza colore delle intestazioni, e il testo delle intestazioni si legge su qualsiasi sfondo." },
         { title: "Colonne vuote visibili", text: "Aprendo un pulsante della barra, le fasi senza schede restano visibili quando tutte le schede appartengono allo stesso progetto o team." },
       ],
     },
