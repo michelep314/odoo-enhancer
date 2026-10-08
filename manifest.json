@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Odoo Enhancer",
+  "name": "Odello",
   "version": "1.16",
   "description": "Nuove funzionalita' per personalizzare odoo",
   "content_scripts": [

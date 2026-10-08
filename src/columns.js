@@ -22,6 +22,7 @@
   const STORE = store("ps-cols-v1", COLS_DEFAULT, (v) => v?.cols && v.look);
   const colCfg = STORE.load();
   const saveCols = () => STORE.save(colCfg);
+  const HEAD_GLASS = "glass";  // valore di look.header per le intestazioni "liquid glass"
   const colFilters = {};    // filtri attivi, per colonna (fino al ricaricamento della pagina)
   const colCollapsed = {};  // gruppi US chiusi, per colonna
 
@@ -92,11 +93,11 @@
     if (root.style.getPropertyValue("--ps-head-ext") !== ext) root.style.setProperty("--ps-head-ext", ext);
   }
 
-  // intestazioni tutte alte come la più alta: il riepilogo priorità non crea più un gradino nella fascia
+  // intestazioni tutte alte come la più alta (con o senza colore): il riepilogo priorità
+  // non crea più un gradino né nella fascia né all'inizio delle schede
   function equalizeHeads() {
     const root = document.documentElement;
     root.style.removeProperty("--ps-head-h");  // misuro l'altezza naturale
-    if (!root.dataset.psHeadall) return;
     const heads = document.querySelectorAll(".o_kanban_view .o_kanban_group:not(.o_column_folded) > .o_kanban_header");
     if (heads.length < 2) return;
     let max = 0;
@@ -273,27 +274,36 @@
   // segno la prima e l'ultima di ogni pila, le sole con gli angoli arrotondati
   const isCard = (n) => n.classList.contains("o_kanban_record") && !n.classList.contains("o_kanban_ghost");
   const isShown = (n) => !n.hidden && !n.dataset.psFiltered && !n.dataset.psSearch && !n.dataset.psCollapsed;
+  // Testata US e prima scheda del gruppo aperto sono attaccate: si squadrano gli angoli che si toccano
   function markStackEnds(g) {
     const cards = [...g.children].filter(isCard);
-    if (!document.documentElement.dataset.psStack) {
-      for (const c of cards) { setFlag(c, "psFirst", false); setFlag(c, "psLast", false); }
-      return;
-    }
+    const seps = [...g.children].filter((n) => n.classList.contains("ps-usgroup"));
+    const stack = !!document.documentElement.dataset.psStack;
     const sorted = !!g.dataset.psSort;  // con l'ordinamento attivo gli elementi senza order vanno in fondo
-    const seq = [...g.children]
+    const seq = !stack && !seps.length ? [] : [...g.children]
         .filter((n) => (isCard(n) || n.classList.contains("ps-usgroup")) && isShown(n))
         .map((n, i) => [n, n.style.order !== "" ? Number(n.style.order) : sorted ? 100000 : 0, i])
         .sort((a, b) => a[1] - b[1] || a[2] - b[2])
         .map(([n]) => n);
-    const first = new Set(), last = new Set();
+    const first = new Set(), last = new Set(), usFirst = new Set(), joined = new Set();
     let prev = null;
-    for (const n of seq) {
-      if (!isCard(n)) { if (prev) last.add(prev); prev = null; continue; }
+    seq.forEach((n, i) => {
+      if (!isCard(n)) {
+        if (prev) last.add(prev);
+        prev = null;
+        if (seq[i + 1] && isCard(seq[i + 1])) { joined.add(n); usFirst.add(seq[i + 1]); }
+        return;
+      }
       if (!prev) first.add(n);
       prev = n;
-    }
+    });
     if (prev) last.add(prev);
-    for (const c of cards) { setFlag(c, "psFirst", first.has(c)); setFlag(c, "psLast", last.has(c)); }
+    for (const c of cards) {
+      setFlag(c, "psFirst", stack && first.has(c));
+      setFlag(c, "psLast", stack && last.has(c));
+      setFlag(c, "psUsfirst", usFirst.has(c));
+    }
+    for (const s of seps) setFlag(s, "psJoined", joined.has(s));
   }
 
   function decorateColumn(g, name, recs) {
@@ -502,13 +512,16 @@
     const sw = el("div", { className: "sw" },
         el("button", { type: "button", className: header == null ? "on none" : "none", title: "Nessun colore", textContent: "∅",
           onclick: () => setHead(null) }),
+        el("button", { type: "button", className: header === HEAD_GLASS ? "on glass" : "glass",
+          title: "Liquid glass: vetro smerigliato trasparente", onclick: () => setHead(HEAD_GLASS) }),
         ...PALETTE.slice(1).map(([hx, nm], i) => {
           const b = el("button", { type: "button", title: nm, className: header === i + 1 ? "on" : "",
             onclick: () => setHead(i + 1) });
           b.style.background = hx;
           return b;
         }));
-    const custom = el("input", { type: "color", value: colorHex(header) || "#714b67", title: "Colore personalizzato" });
+    const custom = el("input", { type: "color", value: (header !== HEAD_GLASS && colorHex(header)) || "#714b67",
+      title: "Colore personalizzato" });
     custom.onchange = () => setHead(custom.value);
     return [
       el("label", { className: "lbl", textContent: "Colore intestazioni (fascia su tutte le colonne)" }),
@@ -631,10 +644,12 @@
     const l = colCfg.look, root = document.documentElement;
     root.dataset.psHeaders = "1";
     root.dataset.psUshead = l.usHead || "solid";  // testate dei gruppi US: piene o leggere
-    const hh = colorHex(l.header);
-    if (hh) {
-      root.style.setProperty("--ps-head", hh);
-      root.style.setProperty("--ps-head-fg", darkText(hh) ? "#1d2029" : "#fff");
+    const glass = l.header === HEAD_GLASS;
+    const hh = glass ? null : colorHex(l.header);
+    setFlag(root, "psHeadglass", glass);
+    if (hh || glass) {
+      root.style.setProperty("--ps-head", hh || "transparent");
+      root.style.setProperty("--ps-head-fg", hh && darkText(hh) ? "#1d2029" : "#fff");
       root.dataset.psHeadall = "1";
       measureHeadExt();
       equalizeHeads();

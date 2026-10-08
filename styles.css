@@ -154,7 +154,7 @@ html[data-ps-glass][data-ps-bg="kanban"] .o_action_manager:has(.o_kanban_view) .
 #ps-qe .prio-list .ps-prio.ps-prio-none{border-style:dashed}
 #ps-qe .prio-list .ps-prio:hover{background:color-mix(in srgb,var(--pc) 28%,transparent)}
 #ps-qe .prio-list .ps-prio.on{background:var(--pc);color:#1d2029}
-.o_kanban_group>.ps-usgroup{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;margin:12px 0 6px;
+.o_kanban_group>.ps-usgroup{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;margin:12px 0 0;
   padding:6px 8px;border:0;border-left:4px solid var(--ps-us-c);border-radius:6px;background:rgba(127,127,127,.14);
   color:inherit;font:600 12.5px/1.3 system-ui,sans-serif;text-align:left;cursor:pointer}
 .o_kanban_group>.ps-usgroup[hidden]{display:none!important}
@@ -175,11 +175,41 @@ html[data-ps-ushead="solid"] .o_kanban_group>.ps-usgroup{background:var(--ps-us-
 html[data-ps-ushead="solid"] .o_kanban_group>.ps-usgroup:hover{background:color-mix(in srgb,var(--ps-us-c) 88%,var(--ps-us-fg))}
 html[data-ps-ushead="solid"] .ps-usgroup .count{background:color-mix(in srgb,var(--ps-us-fg) 22%,transparent);color:var(--ps-us-fg)}
 html[data-ps-ushead="solid"] .ps-usgroup .dot{box-shadow:0 0 0 2px var(--ps-us-fg)}
+/* intestazioni tutte alte uguali (anche senza colore): le schede partono alla stessa altezza */
+html[data-ps-headers] .o_action_manager .o_kanban_view .o_kanban_group:not(.o_column_folded)>.o_kanban_header{
+  min-height:var(--ps-head-h,0)!important}
 html[data-ps-headers][data-ps-headall] .o_action_manager .o_kanban_view .o_kanban_group>.o_kanban_header{
-  background:var(--ps-head)!important;border-radius:0!important;margin-bottom:8px;min-height:var(--ps-head-h,0)!important;
+  background:var(--ps-head)!important;border-radius:0!important;margin-bottom:8px;
   box-shadow:calc(var(--ps-head-ext,8px) * -1) 0 0 var(--ps-head),var(--ps-head-ext,8px) 0 0 var(--ps-head)!important}
 html[data-ps-headall] .o_kanban_group>.o_kanban_header :is(.o_column_title,.o_kanban_counter,.o_kanban_counter_side,
-  .ps-colbtn,.o_kanban_config,.o_kanban_header_title,.o_kanban_quick_add,i,.fa){color:var(--ps-head-fg)!important}
+  .ps-colbtn,.o_kanban_config,.o_kanban_header_title,.o_kanban_quick_add,.ps-prio-dot,i,.fa){color:var(--ps-head-fg)!important}
+html[data-ps-headall] .o_kanban_group>.o_kanban_header .ps-prio-dot:not(.on){background:color-mix(in srgb,var(--ps-head-fg) 16%,transparent)}
+/* liquid glass: fascia continua di vetro smerigliato. Il vetro è un ::before allargato negli spazi tra le colonne
+   (box-shadow non sfoca lo sfondo); a destra si accorcia di 2px per non sovrapporsi al pezzo vicino (niente righe) */
+html[data-ps-headers][data-ps-headglass] .o_action_manager .o_kanban_view .o_kanban_group>.o_kanban_header{
+  /* sticky senza "top" equivale a relative, e se Odoo la rende già sticky ne mantiene il top */
+  background:transparent!important;box-shadow:none!important;backdrop-filter:none!important;isolation:isolate;position:sticky}
+html[data-ps-headers][data-ps-headglass] .o_action_manager .o_kanban_view .o_kanban_group>.o_kanban_header::before{
+  content:"";position:absolute;z-index:-1;top:0;bottom:0;pointer-events:none;
+  left:calc(var(--ps-head-ext,8px) * -1);right:calc((var(--ps-head-ext,8px) - 2px) * -1);
+  background:linear-gradient(rgba(255,255,255,.26),rgba(255,255,255,.08) 60%,rgba(255,255,255,.14)),rgba(22,24,32,.28);
+  backdrop-filter:blur(14px) saturate(180%);-webkit-backdrop-filter:blur(14px) saturate(180%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -1px 0 rgba(255,255,255,.18),0 6px 6px -6px rgba(0,0,0,.45)}
+/* le colonne semitrasparenti sfocate isolerebbero il vetro: negli spazi tra le colonne non si sfocherebbe nulla */
+html[data-ps-headglass][data-ps-glass] .o_action_manager .o_kanban_group:not(.o_column_folded){
+  backdrop-filter:none!important}
+html[data-ps-headglass] .o_kanban_group>.o_kanban_header :is(.o_column_title,.o_kanban_counter,.o_kanban_counter_side,
+  .o_kanban_config,.o_kanban_header_title,.o_kanban_quick_add,.ps-prio-dot,i,.fa){text-shadow:0 1px 2px rgba(0,0,0,.55)}
+#ps-colpop .sw button.glass{border:1px solid rgba(255,255,255,.45);
+  background:linear-gradient(135deg,rgba(255,255,255,.7),rgba(255,255,255,.12) 55%,rgba(255,255,255,.4)),#5a6070;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.8)}
+/* senza colore, sopra un'immagine di sfondo: testo chiaro con alone scuro, leggibile su qualsiasi immagine */
+html[data-ps-bg]:not([data-ps-headall]) .o_action_manager .o_kanban_header :is(.o_column_title,.o_kanban_counter,
+  .o_kanban_counter_side,.o_kanban_config,.o_kanban_header_title,.o_kanban_quick_add,.ps-prio-dot,i,.fa){
+  color:#fff!important;text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 6px rgba(0,0,0,.6)}
+html[data-ps-bg]:not([data-ps-headall]) .o_action_manager .o_kanban_header .ps-prio-dot{background:rgba(18,20,28,.45)}
+html[data-ps-bg]:not([data-ps-headall]) .o_action_manager .o_kanban_header .ps-prio-dot.on{
+  background:color-mix(in srgb,var(--pc) 45%,rgba(18,20,28,.6))}
 html[data-ps-look] .o_kanban_view .o_kanban_record{margin-bottom:var(--ps-gap)!important}
 html[data-ps-round] .o_kanban_view .o_kanban_record{border-radius:var(--ps-radius)!important}
 /* ritaglia copertina, striscia colorata e contenuti interni sugli angoli (non con il menu ⋮ aperto, per non tagliarlo) */
@@ -190,6 +220,10 @@ html[data-ps-round][data-ps-stack] .o_kanban_view .o_kanban_group>.o_kanban_reco
   border-top-left-radius:var(--ps-radius)!important;border-top-right-radius:var(--ps-radius)!important}
 html[data-ps-round][data-ps-stack] .o_kanban_view .o_kanban_group>.o_kanban_record[data-ps-last]{
   border-bottom-left-radius:var(--ps-radius)!important;border-bottom-right-radius:var(--ps-radius)!important}
+/* testata US attaccata alla prima scheda del gruppo: angoli squadrati dove si toccano (vince anche sulla pila) */
+html .o_kanban_view .o_kanban_group>.ps-usgroup[data-ps-joined]{border-bottom-left-radius:0!important;border-bottom-right-radius:0!important}
+html[data-ps-headers] .o_action_manager .o_kanban_view .o_kanban_group>.o_kanban_record[data-ps-usfirst][data-ps-usfirst]{
+  border-top-left-radius:0!important;border-top-right-radius:0!important}
 html[data-ps-look] .o_kanban_view .o_kanban_group{border-radius:var(--ps-col-radius)!important}
 html[data-ps-shadow] .o_kanban_view .o_kanban_record{box-shadow:0 1px 2px #0007,0 0 0 1px #0002!important}
 html[data-ps-look] .ps-us{border-radius:max(3px,calc(var(--ps-radius) * .45))}
