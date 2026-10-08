@@ -9,6 +9,13 @@
   // dalla più recente alla più vecchia; "how" (facoltativo) dice dove trovare la funzione
   const CHANGELOG = [
     {
+      version: "1.17", date: "2026-10-08",
+      items: [
+        { title: "Ricerca nelle descrizioni", text: "La ricerca rapida guarda anche descrizione, note e criteri di accettazione. Più parole vanno tutte trovate, anche in campi diversi: \"alunno sospeso\" trova le schede con alunno e sospeso, come in Trello. Tra virgolette cerchi la frase esatta.",
+          how: "Premi / in una vista kanban, oppure 🔍 nella barra" },
+      ],
+    },
+    {
       version: "1.16", date: "2026-10-08",
       items: [
         { title: "Sfondo per app o per vista", text: "Puoi dare uno sfondo diverso a ogni app (Helpdesk, Progetti, Fogli ore…) o a una singola vista; la vista vince sull'app, l'app su tutte le pagine. Il ● nell'elenco indica dove c'è già uno sfondo.",

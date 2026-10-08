@@ -4,6 +4,11 @@ Tutte le modifiche rilevanti di Odoo Enhancer. Il formato segue [Keep a Changelo
 
 > Quando si pubblica una versione aggiornare **insieme**: `manifest.json` (`version`), `src/changelog.js` (pannello ✨ Novità) e questo file.
 
+## [1.17] - 2026-10-08
+
+### Aggiunto
+- **Ricerca rapida nelle descrizioni**: cerca anche in descrizione, note e criteri di accettazione (campi html/testo il cui nome o etichetta contiene "descr", "note", "acceptance" o "criteri"). Non sono caricati nelle schede: vengono letti dal server alla prima ricerca, a blocchi di 200, e tenuti finché la ricerca resta aperta; nel frattempo il conteggio mostra "cerco nelle descrizioni…". Più parole restano in AND anche tra campi diversi (come Trello: `alunno sospeso` trova le schede che contengono entrambe le parole, ovunque); tra virgolette si cerca la frase esatta (`"alunno sospeso"`).
+
 ## [1.16] - 2026-10-08
 
 ### Aggiunto

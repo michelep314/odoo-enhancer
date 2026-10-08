@@ -3,7 +3,7 @@
   "use strict";
   const PS = window.__ps;
   if (!PS || PS.ready) return;
-  const { el, setFlag, recText, prioOf, PRIO } = PS;
+  const { el, setFlag, recText, prioOf, PRIO, getEnv } = PS;
 
   // minuscole e senza accenti: "Attività" trova "attivita"
   const norm = (s) => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -11,13 +11,71 @@
   let query = "", terms = [];
   let box = null, input = null, countEl = null, timer = null;
 
-  // "@mario" = solo tra le persone, "#123" = numero della scheda, il resto ovunque; tutte le parole in AND
+  // "@mario" = solo tra le persone, "#123" = numero della scheda, "due parole" tra virgolette = frase esatta,
+  // il resto ovunque; tutte le parole in AND (come Trello: "alunno sospeso" trova le schede con entrambe)
   function parse(q) {
-    return q.trim().split(/\s+/).filter(Boolean).map((w) => {
+    return [...q.matchAll(/"([^"]+)"?|(\S+)/g)].map(([, phrase, w]) => {
+      if (phrase !== undefined) return { kind: "text", value: norm(phrase.trim().replace(/\s+/g, " ")) };
       if (/^#\d+$/.test(w)) return { kind: "id", value: w.slice(1) };
       if (w.startsWith("@") && w.length > 1) return { kind: "user", value: norm(w.slice(1)) };
       return { kind: "text", value: norm(w) };
-    });
+    }).filter((t) => t.value);
+  }
+
+  /* Testi lunghi (descrizione, note, criteri di accettazione) non sono caricati nelle schede:
+     li leggo dal server alla prima ricerca e li tengo finché la ricerca resta aperta */
+  const LONG_RE = /descr|note|acceptance|criteri/i;
+  const longFields = new Map();  // modello → Promise<[nomi dei campi html/text]>
+  const longText = new Map();    // "modello:id" → testo normalizzato
+  let loading = null, gen = 0;  // gen cambia a ogni chiusura: i risultati arrivati dopo vengono scartati
+
+  function fieldsOf(orm, model) {
+    if (!longFields.has(model)) {
+      longFields.set(model, orm.call(model, "fields_get", [], { attributes: ["type", "string"] })
+          .then((fs) => Object.entries(fs)
+              .filter(([k, f]) => ["html", "text"].includes(f.type) && (LONG_RE.test(k) || LONG_RE.test(f.string || "")))
+              .map(([k]) => k))
+          .catch(() => []));
+    }
+    return longFields.get(model);
+  }
+  // HTML → testo (DOMParser non esegue script né carica immagini)
+  const plain = (v) => (typeof v !== "string" ? ""
+      : /<[a-z!]/i.test(v) ? new DOMParser().parseFromString(v, "text/html").body.textContent : v);
+
+  async function loadLong(records) {
+    const orm = getEnv()?.services.orm;
+    if (!orm) return false;
+    const g = gen, byModel = new Map();
+    for (const [, r] of records) {
+      if (!r.resId || longText.has(`${r.resModel}:${r.resId}`)) continue;
+      if (!byModel.has(r.resModel)) byModel.set(r.resModel, []);
+      byModel.get(r.resModel).push(r.resId);
+    }
+    for (const [model, ids] of byModel) {
+      const fs = await fieldsOf(orm, model);
+      for (let i = 0; i < ids.length; i += 200) {
+        const chunk = ids.slice(i, i + 200);
+        const rows = fs.length ? await orm.read(model, chunk, fs).catch(() => []) : [];
+        if (g !== gen) return false;
+        const byId = new Map(rows.map((row) => [row.id, row]));
+        for (const id of chunk) {
+          const row = byId.get(id);  // in caso di errore resta vuoto: non riprovo a ogni giro
+          longText.set(`${model}:${id}`, row ? norm(fs.map((f) => plain(row[f])).join("\n")) : "");
+        }
+      }
+    }
+    return byModel.size > 0;
+  }
+
+  // avvia (una volta) la lettura dei testi lunghi mancanti; al termine ridisegna con i risultati completi
+  function ensureLong(records) {
+    if (loading || !terms.some((t) => t.kind === "text")) return !!loading;
+    if (records.every(([, r]) => !r.resId || longText.has(`${r.resModel}:${r.resId}`))) return false;
+    loading = loadLong(records)
+        .catch((e) => console.warn("[pulsantiera] ricerca nelle descrizioni:", e))
+        .then((changed) => { loading = null; if (changed && terms.length) redecorate(); });
+    return true;
   }
 
   // testo ricercabile di una scheda: campi testo/relazione, etichette, persone, US, priorità
@@ -51,12 +109,14 @@
     return terms.every((t) => {
       if (t.kind === "id") return String(rec.resId).startsWith(t.value);
       h ??= haystack(rec);
-      return (t.kind === "user" ? h.users : h.all).includes(t.value);
+      if (t.kind === "user") return h.users.includes(t.value);
+      return h.all.includes(t.value) || !!longText.get(`${rec.resModel}:${rec.resId}`)?.includes(t.value);
     });
   }
 
   // chiamata da decorate() a ogni giro, prima delle colonne (così i conteggi dei gruppi US ne tengono conto)
   function applySearch(records) {
+    const busy = terms.length > 0 && ensureLong(records);
     let shown = 0;
     for (const [card, rec] of records) {
       const hide = terms.length > 0 && !matches(rec);
@@ -65,7 +125,8 @@
     }
     if (!countEl) return;
     countEl.textContent = !records.length ? "Nessuna scheda kanban"
-        : terms.length ? `${shown} di ${records.length} schede` : `${records.length} schede`;
+        : terms.length ? `${shown} di ${records.length} schede${busy ? " · cerco nelle descrizioni…" : ""}`
+        : `${records.length} schede`;
   }
 
   const redecorate = () => {
@@ -74,7 +135,7 @@
 
   function openSearch() {
     if (!box) {
-      input = el("input", { type: "search", placeholder: "Cerca: testo, US, etichetta, @persona, #numero",
+      input = el("input", { type: "search", placeholder: "Cerca: testo, descrizione, note, US, @persona, #numero, \"frase\"",
         value: query, spellcheck: false });
       input.setAttribute("aria-label", "Cerca nelle schede");
       countEl = el("span", { className: "count" });
@@ -106,6 +167,8 @@
     const had = terms.length > 0;
     query = "";
     terms = [];
+    longText.clear();
+    gen++;  // alla prossima ricerca rilegge descrizioni e note, magari modificate nel frattempo
     box?.remove();
     box = input = countEl = null;
     if (had) redecorate();
