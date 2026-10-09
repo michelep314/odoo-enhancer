@@ -11,8 +11,9 @@
     {
       version: "1.19", date: "2026-10-08",
       items: [
-        { title: "Note e promemoria", text: "Appunta cose da fare e, se vuoi, imposta un promemoria: all'ora scelta arriva una notifica in Odoo, con un breve suono (disattivabile). Ogni nota si può collegare a una scheda o a una user story e aprirla con un clic. Il numero sull'icona ti dice quante note scadute o importanti (★) ti aspettano.",
+        { title: "Note e promemoria", text: "Appunta cose da fare e, se vuoi, imposta un promemoria: all'ora scelta arriva una notifica in Odoo, con un breve suono (disattivabile). Da qualsiasi pagina puoi collegare ogni nota a una scheda dello sprint corrente o precedente, o a un ticket (anche cercando il team helpdesk), e aprirla con un clic. Il numero sull'icona ti dice quante note scadute o importanti (★) ti aspettano.",
           how: "Icona 📄 nella barra in alto" },
+        { title: "Finestre più pulite", text: "Conferme, avvisi e richieste di testo non usano più il riquadro grigio del browser: compaiono in una finestra al centro, nello stile dell'estensione. Invio conferma, Esc annulla." },
       ],
     },
     {

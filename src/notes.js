@@ -3,7 +3,7 @@
   "use strict";
   const PS = window.__ps;
   if (!PS || PS.ready) return;
-  const { el, fail, chk, store, getEnv, TASK, kanbanRecords } = PS;
+  const { el, fail, chk, store, getEnv, TASK, SPRINT_FIELD, sprintValue } = PS;
 
   // nota = { id, text, due: "AAAA-MM-GGTHH:MM" | "", important, done, notified, created,
   //          link: null | { type: "card", model, id, name } | { type: "us", label } }
@@ -37,7 +37,7 @@
       getEnv()?.services.action.doAction({ type: "ir.actions.act_window", res_model: l.model, res_id: l.id,
         views: [[false, "form"]], target: "current" }).catch(fail);
     } else if (l.type === "us") {
-      if (!document.querySelector(".o_kanban_renderer")) return alert(`Apri una vista kanban per cercare le schede di ${l.label}.`);
+      if (!document.querySelector(".o_kanban_renderer")) return PS.say(`Apri una vista kanban per cercare le schede di ${l.label}.`);
       PS.togglePanel("notes").catch(fail);  // chiude il pannello
       PS.openSearch(l.label);
     }
@@ -114,49 +114,198 @@
   setTimeout(checkReminders, 3000);
   addEventListener("storage", (e) => { if (e.key === "ps-notes-v1") afterChange(); });
 
-  /* ---------- scheda da collegare: ricerca per nome o #numero ---------- */
-  function cardPicker(onPick) {
-    const input = el("input", { placeholder: "Cerca una scheda: titolo o #numero", autocomplete: "off", spellcheck: false });
-    const list = el("div", { className: "ps-combo-list", hidden: true });
-    let timer = null, seq = 0;
-    async function search() {
-      const q = input.value.trim(), my = ++seq;
-      if (!q) { list.hidden = true; return; }
-      const { orm } = getEnv().services;
-      let rows;
-      if (/^#?\d+$/.test(q)) {
-        rows = (await orm.read(TASK, [Number(q.replace("#", ""))], ["display_name"]).catch(() => []))
-            .map((r) => [r.id, r.display_name]);
-      } else {
-        rows = await orm.call(TASK, "name_search", [], { name: q, limit: 15 });
-      }
-      if (my !== seq) return;  // risposta di una ricerca vecchia
-      list.replaceChildren(...(rows.length ? rows.map(([id, name]) => el("div", { className: "opt", textContent: `#${id} ${name}`,
-        onmousedown: (e) => { e.preventDefault(); list.hidden = true; onPick({ type: "card", model: TASK, id, name }); } }))
-        : [el("div", { className: "empty", textContent: "Nessuna scheda trovata" })]));
-      list.hidden = false;
-    }
-    input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => search().catch(fail), 250); });
-    input.addEventListener("blur", () => { list.hidden = true; });
-    input.addEventListener("keydown", (e) => { if (e.key === "Escape" && !list.hidden) { e.preventDefault(); list.hidden = true; } });
-    return el("div", { className: "ps-combo" }, input, list);
+  /* ---------- collegamento: scheda di progetto (sprint corrente o precedente) o ticket helpdesk ----------
+     Cerca sempre sul server, da qualsiasi pagina. A campo vuoto mostra le schede dei due sprint
+     o i ticket aperti più recenti; il nome di un team helpdesk ("Supporto") porta tutti i suoi ticket. */
+  const TICKET = "helpdesk.ticket";
+  const kindOf = (l) => (l?.type === "us" ? "US" : l?.model === TICKET ? "Ticket" : "Scheda");
+  let sprints = null;  // Promise<[corrente, precedente]>, calcolata una volta per pagina
+
+  async function findTasks(orm, q) {
+    sprints ||= Promise.all([sprintValue(orm, 0), sprintValue(orm, 1)]).catch(() => [null, null]);
+    const [cur, prev] = await sprints;
+    const vals = [cur, prev].filter((v) => v != null);
+    if (!vals.length) return [];
+    const id = /^#?\d+$/.test(q) ? Number(q.replace("#", "")) : null;
+    const dom = [[SPRINT_FIELD, "in", vals]];
+    if (q) dom.push(...(id ? ["|", ["id", "=", id], ["name", "ilike", q]] : [["name", "ilike", q]]));
+    const rows = await orm.searchRead(TASK, dom, ["display_name", SPRINT_FIELD, "project_id"],
+        { limit: 80, order: `${SPRINT_FIELD} desc, id desc` });
+    const label = (v) => `Sprint ${v}${v === cur ? " · corrente" : v === prev ? " · precedente" : ""}`;
+    return rows.map((r) => ({ group: label(r[SPRINT_FIELD]), meta: r.project_id?.[1] || "",
+      link: { type: "card", model: TASK, id: r.id, name: r.display_name } }));
   }
 
-  // scheda aperta in form o US delle schede nel kanban, per collegarle con un clic
-  function openCard() {
-    const ctrl = getEnv()?.services.action?.currentController;
-    const p = ctrl?.props;
-    if (p?.resModel !== TASK || !p.resId) return null;
-    const name = document.querySelector(".o_breadcrumb .active, .o_last_breadcrumb_item")?.textContent.trim() || `Scheda ${p.resId}`;
-    return { type: "card", model: TASK, id: p.resId, name };
+  async function findTickets(orm, q) {
+    const id = /^#?\d+$/.test(q) ? Number(q.replace("#", "")) : null;
+    // vuoto: ticket aperti (fase non chiusa); con testo: titolo, numero o nome del team, anche chiusi
+    const dom = !q ? [["stage_id.fold", "=", false]]
+      : id ? ["|", ["id", "=", id], ["name", "ilike", q]]
+      : ["|", ["name", "ilike", q], ["team_id.name", "ilike", q]];
+    const rows = await orm.searchRead(TICKET, dom, ["display_name", "team_id", "stage_id"], { limit: 80, order: "id desc" });
+    return rows.map((r) => ({ group: `Team · ${r.team_id?.[1] || "senza team"}`, meta: r.stage_id?.[1] || "",
+      link: { type: "card", model: TICKET, id: r.id, name: r.display_name } }));
   }
-  function visibleUs() {
-    const seen = new Map();
-    for (const [, r] of kanbanRecords()) {
-      const v = PS.usOf(r);
-      if (v && !seen.has(PS.usKey(v))) seen.set(PS.usKey(v), v);
+
+  function linkPicker(onPick) {
+    const MODES = { task: ["Scheda di progetto", "Cerca nello sprint corrente e precedente: titolo o #numero"],
+      ticket: ["Ticket", "Cerca un ticket: titolo, #numero o nome del team"] };
+    let mode = "task", timer = null, seq = 0, opts = [], active = -1;
+    const input = el("input", { autocomplete: "off", spellcheck: false });
+    const list = el("div", { className: "ps-combo-list", hidden: true });
+    list.addEventListener("mousedown", (e) => e.preventDefault());  // il campo non perde il focus
+    const tabs = el("div", { className: "ps-seg", role: "tablist" });
+    function drawTabs() {
+      PS.fill(tabs, ...Object.entries(MODES).map(([k, [label]]) => {
+        const b = el("button", { type: "button", className: k === mode ? "on" : "", textContent: label,
+          onclick: () => { if (mode === k) return; mode = k; drawTabs(); input.value = ""; input.focus(); search().catch(fail); } });
+        b.setAttribute("aria-selected", String(k === mode));
+        return b;
+      }));
+      input.placeholder = MODES[mode][1];
     }
-    return [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+    const pick = (l) => { list.hidden = true; onPick(l); };
+    function setActive(i) {
+      active = i;
+      opts.forEach((o, j) => o.node.classList.toggle("on", j === i));
+      opts[i]?.node.scrollIntoView({ block: "nearest" });
+    }
+    function draw(items, msg) {
+      opts = [];
+      const nodes = [];
+      let group = null;
+      for (const it of items) {
+        if (it.group !== group) { group = it.group; nodes.push(el("div", { className: "grp", textContent: group })); }
+        const node = el("div", { className: "opt", title: `#${it.link.id} ${it.link.name}${it.meta ? " · " + it.meta : ""}`,
+          onclick: () => pick(it.link) },
+            el("span", { textContent: `#${it.link.id} ${it.link.name}` }),
+            it.meta ? el("small", { textContent: it.meta }) : null);
+        opts.push({ l: it.link, node });
+        nodes.push(node);
+      }
+      if (msg) nodes.push(el("div", { className: "empty", textContent: msg }));
+      PS.fill(list, ...nodes);
+      list.hidden = false;
+      setActive(opts.length ? 0 : -1);
+    }
+    async function search() {
+      const q = input.value.trim(), my = ++seq, m = mode;
+      if (!opts.length) draw([], "Cerco…");
+      const orm = getEnv()?.services.orm;
+      if (!orm) return draw([], "Odoo non ancora caricato.");
+      let items;
+      try { items = await (m === "task" ? findTasks(orm, q) : findTickets(orm, q)); }
+      catch (e) {
+        if (my !== seq) return;
+        return draw([], m === "ticket" ? "Ticket non disponibili (modulo helpdesk assente o senza accesso)."
+            : "Ricerca non riuscita: " + (e?.data?.message || e.message));
+      }
+      if (my !== seq) return;  // risposta di una ricerca vecchia
+      draw(items, items.length ? null : m === "task" ? "Nessuna scheda negli ultimi due sprint." : "Nessun ticket trovato.");
+    }
+    input.addEventListener("focus", () => search().catch(fail));
+    input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => search().catch(fail), 250); });
+    input.addEventListener("blur", () => { list.hidden = true; });
+    input.addEventListener("keydown", (e) => {
+      if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !list.hidden && opts.length) {
+        e.preventDefault();
+        setActive((active + (e.key === "ArrowDown" ? 1 : -1) + opts.length) % opts.length);
+      } else if (e.key === "Enter" && !list.hidden && opts[active]) {
+        e.preventDefault();
+        pick(opts[active].l);
+      } else if (e.key === "Escape" && !list.hidden) {
+        e.preventDefault();
+        list.hidden = true;
+      }
+    });
+    drawTabs();
+    return el("div", {}, tabs, el("div", { className: "ps-combo" }, input, list));
+  }
+
+  // scheda o ticket aperto in form, per collegarlo con un clic
+  function openCard() {
+    const p = getEnv()?.services.action?.currentController?.props;
+    if (![TASK, TICKET].includes(p?.resModel) || !p.resId) return null;
+    const name = document.querySelector(".o_breadcrumb .active, .o_last_breadcrumb_item")?.textContent.trim() || `#${p.resId}`;
+    return { type: "card", model: p.resModel, id: p.resId, name };
+  }
+
+  /* ---------- giorno in formato italiano: gg/mm/aaaa, calendario con settimana da lunedì ----------
+     (input type=date segue la lingua del browser: in inglese mostra mm/dd/yyyy) */
+  const MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre",
+    "ottobre", "novembre", "dicembre"];
+  const GIORNI = ["lu", "ma", "me", "gi", "ve", "sa", "do"];
+  const isoOf = (d) => toLocal(d).slice(0, 10);
+  const itOf = (iso) => (iso ? iso.split("-").reverse().join("/") : "");
+  // "8/10/2026", "08.10.26", "8-10" (anno corrente) → "2026-10-08"; null se non valida
+  function parseIt(str) {
+    const m = str.trim().match(/^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2}|\d{4}))?$/);
+    if (!m) return null;
+    const [dd, mm] = [Number(m[1]), Number(m[2])];
+    let yy = m[3] ? Number(m[3]) : new Date().getFullYear();
+    if (yy < 100) yy += 2000;
+    const d = new Date(yy, mm - 1, dd);
+    return d.getMonth() === mm - 1 && d.getDate() === dd ? isoOf(d) : null;
+  }
+
+  function datePicker(onChange) {
+    let iso = "", view = null;  // view = primo giorno del mese mostrato
+    const input = el("input", { placeholder: "gg/mm/aaaa", autocomplete: "off", title: "Giorno del promemoria (gg/mm/aaaa)" });
+    const btn = el("button", { type: "button", className: "icon", textContent: "📅", title: "Apri il calendario" });
+    const cal = el("div", { className: "ps-cal", hidden: true });
+    const node = el("div", { className: "ps-date" }, input, btn, cal);
+    cal.addEventListener("mousedown", (e) => e.preventDefault());  // il campo non perde il focus cliccando nel calendario
+
+    const set = (v, fire) => { iso = v || ""; input.value = itOf(iso); if (fire) onChange(iso); };
+    const close = () => { cal.hidden = true; };
+    function draw() {
+      const y = view.getFullYear(), m = view.getMonth();
+      const offset = (new Date(y, m, 1).getDay() + 6) % 7;  // lunedì = 0
+      const days = new Date(y, m + 1, 0).getDate();
+      const today = isoOf(new Date());
+      const nav = (dm) => el("button", { type: "button", className: "nav", textContent: dm < 0 ? "‹" : "›",
+        title: dm < 0 ? "Mese precedente" : "Mese successivo", onclick: () => { view = new Date(y, m + dm, 1); draw(); } });
+      const cells = Array.from({ length: offset }, () => el("span"));
+      for (let d = 1; d <= days; d++) {
+        const v = isoOf(new Date(y, m, d));
+        cells.push(el("button", { type: "button", className: `d${v === iso ? " on" : ""}${v === today ? " today" : ""}`,
+          textContent: String(d), onclick: () => { set(v, true); close(); } }));
+      }
+      PS.fill(cal,
+          el("div", { className: "head" }, nav(-1), el("strong", { textContent: `${MESI[m]} ${y}` }), nav(1)),
+          el("div", { className: "grid" }, ...GIORNI.map((g) => el("span", { className: "wd", textContent: g })), ...cells),
+          el("div", { className: "foot" },
+              el("button", { type: "button", textContent: "Oggi", onclick: () => { set(today, true); close(); } }),
+              el("button", { type: "button", textContent: "Cancella", onclick: () => { set("", true); close(); } })));
+    }
+    function open() {
+      const base = iso ? new Date(`${iso}T00:00`) : new Date();
+      view = new Date(base.getFullYear(), base.getMonth(), 1);
+      draw();
+      cal.hidden = false;
+    }
+    btn.onclick = () => (cal.hidden ? open() : close());
+    input.addEventListener("focus", open);
+    input.addEventListener("blur", close);
+    input.addEventListener("change", () => {
+      const t = input.value.trim();
+      if (!t) return set("", true);
+      const v = parseIt(t);
+      if (v) set(v, true);
+      else { input.value = itOf(iso); PS.say("Data non valida: usa gg/mm/aaaa (es. 8/10/2026)."); }
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !cal.hidden) { e.preventDefault(); close(); }
+      else if (e.key === "Enter") { e.preventDefault(); input.dispatchEvent(new Event("change")); close(); }
+    });
+    // clic fuori: si chiude (il listener si toglie da solo quando il pannello non c'è più)
+    const outside = (e) => {
+      if (!node.isConnected) return document.removeEventListener("mousedown", outside, true);
+      if (!cal.hidden && !node.contains(e.target)) close();
+    };
+    document.addEventListener("mousedown", outside, true);
+    return { node, get value() { return iso; }, set value(v) { set(v, false); } };
   }
 
   /* ---------- data e ora del promemoria, sempre a 24 ore ----------
@@ -164,7 +313,7 @@
      value = "AAAA-MM-GGTHH:MM" oppure "" (come datetime-local) */
   function dueField() {
     const opt = (v) => el("option", { value: v, textContent: v });
-    const dateIn = el("input", { type: "date", title: "Giorno del promemoria" });
+    const dateIn = datePicker((v) => { if (v && !hourSel.value) { hourSel.value = "09"; setMin("00"); } });
     const hourSel = el("select", { title: "Ora (00–23)" }, el("option", { value: "", textContent: "--" }),
         ...Array.from({ length: 24 }, (_, h) => opt(pad(h))));
     const minSel = el("select", { title: "Minuti" }, el("option", { value: "", textContent: "--" }),
@@ -177,8 +326,7 @@
       }
       minSel.value = m;
     };
-    // scelta la data senza ora: 09:00; scelta l'ora senza data: oggi
-    dateIn.addEventListener("change", () => { if (dateIn.value && !hourSel.value) { hourSel.value = "09"; setMin("00"); } });
+    // scelta la data senza ora: 09:00 (in datePicker); scelta l'ora senza data: oggi
     for (const sel of [hourSel, minSel]) {
       sel.addEventListener("change", () => {
         if (!sel.value) return;
@@ -187,7 +335,7 @@
         if (!minSel.value) setMin("00");
       });
     }
-    const node = el("div", { className: "ps-due" }, dateIn, hourSel, el("span", { textContent: ":" }), minSel);
+    const node = el("div", { className: "ps-due" }, dateIn.node, hourSel, el("span", { textContent: ":" }), minSel);
     return {
       node,
       get value() { return dateIn.value ? `${dateIn.value}T${hourSel.value || "09"}:${minSel.value || "00"}` : ""; },
@@ -220,27 +368,17 @@
     const linkBox = el("div");
     function drawLink() {
       if (link) {
-        linkBox.replaceChildren(el("div", { className: "ps-note-link" },
-            el("span", { textContent: (link.type === "us" ? "US " : "Scheda ") + linkLabel(link) }),
+        PS.fill(linkBox, el("div", { className: "ps-note-link" },
+            el("span", { textContent: `${kindOf(link)} ${linkLabel(link)}` }),
             el("button", { type: "button", className: "icon", textContent: "×", title: "Togli il collegamento",
               onclick: () => { link = null; drawLink(); } })));
         return;
       }
       const cur = openCard();
-      const usList = visibleUs();
-      const usIn = el("input", { placeholder: "Oppure scrivi una US (es. US612.1)" });
-      usIn.setAttribute("list", "ps-note-us");  // "list" è in sola lettura come proprietà
-      const usBtn = el("button", { type: "button", textContent: "Collega US", onclick: () => {
-        const v = usIn.value.trim();
-        if (v) { link = { type: "us", label: v }; drawLink(); }
-      } });
-      usIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); usBtn.click(); } });
-      linkBox.replaceChildren(...[  // replaceChildren scriverebbe "null" come testo
-          cardPicker((l) => { link = l; drawLink(); }),
-          cur ? el("div", { className: "acts tight" }, el("button", { type: "button", textContent: `Scheda aperta: ${cur.name}`,
+      PS.fill(linkBox, ...[
+          linkPicker((l) => { link = l; drawLink(); }),
+          cur ? el("div", { className: "acts tight" }, el("button", { type: "button", textContent: `${kindOf(cur)} ${cur.model === TICKET ? "aperto" : "aperta"}: ${cur.name}`,
             onclick: () => { link = cur; drawLink(); } })) : null,
-          el("div", { className: "inline", style: "margin-top:6px" }, usIn, usBtn),
-          el("datalist", { id: "ps-note-us" }, ...usList.map((v) => el("option", { value: v }))),
       ].filter(Boolean));
     }
 
@@ -257,7 +395,7 @@
     cancelBtn.onclick = resetForm;
     saveBtn.onclick = () => {
       const text = textIn.value.trim();
-      if (!text) return alert("Scrivi il testo della nota.");
+      if (!text) return PS.say("Scrivi il testo della nota.");
       const due = dueIn.value || "", important = impL.control.checked;
       mutate((items) => {
         const old = editing && items.find((i) => i.id === editing);
@@ -283,8 +421,8 @@
               el("div", { className: "text", textContent: n.text }),
               n.due || n.link ? el("div", { className: "meta" },
                   n.due ? el("span", { className: "when", textContent: `⏰ ${fmtDue(n.due)}${overdue ? " · scaduto" : ""}` }) : null,
-                  n.link ? el("button", { type: "button", className: "chip", textContent: (n.link.type === "us" ? "US " : "") + linkLabel(n.link),
-                    title: n.link.type === "us" ? "Cerca le schede di questa US nel kanban" : "Apri la scheda",
+                  n.link ? el("button", { type: "button", className: "chip", textContent: `${kindOf(n.link)} ${linkLabel(n.link)}`,
+                    title: n.link.type === "us" ? "Cerca le schede di questa US nel kanban" : `Apri ${n.link.model === TICKET ? "il ticket" : "la scheda"}`,
                     onclick: () => openLink(n.link) }) : null) : null),
           el("span", { className: "tools" },
               el("button", { type: "button", className: `icon star${n.important ? " on" : ""}`, textContent: n.important ? "★" : "☆",
@@ -300,8 +438,8 @@
                 form.open = true;
                 textIn.focus();
               } }),
-              el("button", { type: "button", className: "icon del", textContent: "×", title: "Elimina", onclick: () => {
-                if (!confirm("Eliminare la nota?")) return;
+              el("button", { type: "button", className: "icon del", textContent: "×", title: "Elimina", onclick: async () => {
+                if (!(await PS.ask("Eliminare la nota?", { ok: "Elimina", danger: true }))) return;
                 mutate((items) => { const i = items.findIndex((x) => x.id === n.id); if (i >= 0) items.splice(i, 1); });
                 if (editing === n.id) resetForm();
                 drawList();
@@ -314,7 +452,7 @@
       const all = load();
       const doneN = all.filter((n) => n.done).length;
       const shown = all.filter((n) => showDone || !n.done).sort(order);
-      listBox.replaceChildren(...[
+      PS.fill(listBox, ...[
         ...(shown.length ? shown.map(noteRow) : [el("p", { className: "hint", textContent: all.length ? "Nessuna nota da fare." : "Ancora nessuna nota: aggiungine una qui sopra." })]),
         doneN ? chk(`Mostra completate (${doneN})`, showDone, (v) => { showDone = v; drawList(); }) : null,
       ].filter(Boolean));
@@ -328,7 +466,7 @@
         textIn,
         el("label", { textContent: "Promemoria (facoltativo)" }), dueIn.node, quickRow,
         impL,
-        el("label", { textContent: "Collega a una scheda o a una user story (facoltativo)" }), linkBox,
+        el("label", { textContent: "Collega a una scheda o a un ticket (facoltativo)" }), linkBox,
         el("div", { className: "acts" }, saveBtn, cancelBtn));
     form.addEventListener("toggle", () => { if (form.open) textIn.focus(); });
     const listTitle = el("h4", { className: "sep" });
@@ -336,7 +474,7 @@
     drawLink();
     drawList();
     form.open = !load().length;  // nessuna nota: il modulo parte aperto
-    panel.replaceChildren(
+    PS.fill(panel,
         el("h4", { textContent: "Note e promemoria" }),
         form,
         listTitle,

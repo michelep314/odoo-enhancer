@@ -20,7 +20,9 @@
     n.append(...kids.filter((k) => k != null));
     return n;
   };
-  const fail = (e) => alert("Errore: " + (e?.data?.message || e?.message || e));
+  // come node.replaceChildren(...), ma scarta null/undefined (replaceChildren li scriverebbe come testo "null")
+  const fill = (node, ...kids) => { node.replaceChildren(...kids.filter((k) => k != null)); return node; };
+  const fail = (e) => say("Errore: " + (e?.data?.message || e?.message || e));
 
   // impedisce che Odoo avvii il trascinamento della scheda/colonna
   const isolate = (node) => {
@@ -54,17 +56,68 @@
       },
       save(v) {
         try { localStorage.setItem(key, JSON.stringify(v)); }
-        catch (e) { alert("Salvataggio non riuscito: " + e.message); }
+        catch (e) { say("Salvataggio non riuscito: " + e.message); }
       },
     };
   }
+
+  /* ---------- finestre di dialogo interne (al posto di alert/confirm/prompt del browser) ----------
+     Restituiscono una Promise: say → true, ask → true/false, askText → testo o null (Annulla) */
+  function dialog({ title = "", message = "", input = null, ok = "OK", cancel = null, danger = false }) {
+    return new Promise((resolve) => {
+      const prev = document.activeElement;
+      let field = null;
+      if (input) {
+        field = el(input.multiline ? "textarea" : "input",
+            { value: input.value ?? "", placeholder: input.placeholder || "", spellcheck: false, readOnly: !!input.readOnly });
+        if (input.multiline) field.rows = 6;
+      }
+      const cancelValue = field && !input.readOnly ? null : !cancel;
+      function done(v) {
+        overlay.remove();
+        document.removeEventListener("keydown", key, true);
+        prev?.focus?.({ preventScroll: true });
+        resolve(v);
+      }
+      const okBtn = el("button", { type: "button", className: danger ? "danger" : "primary", textContent: ok,
+        onclick: () => done(field && !input.readOnly ? field.value : true) });
+      const box = el("div", { className: "box" },
+          title ? el("h4", { textContent: title }) : null,
+          message ? el("p", { className: "msg", textContent: message }) : null,
+          field,
+          el("div", { className: "acts" },
+              cancel ? el("button", { type: "button", textContent: cancel, onclick: () => done(cancelValue) }) : null, okBtn));
+      box.setAttribute("role", cancel ? "alertdialog" : "dialog");
+      box.setAttribute("aria-modal", "true");
+      const overlay = el("div", { id: "ps-dialog" }, box);
+      // clic sullo sfondo = Annulla (o chiude un semplice avviso)
+      overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) done(cancel ? cancelValue : true); });
+      // Esc annulla, Invio conferma (non dentro un testo su più righe); il resto della pagina non riceve i tasti
+      const key = (e) => {
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(cancel ? cancelValue : true); }
+        else if (e.key === "Enter" && !(e.target.tagName === "TEXTAREA" && !e.ctrlKey)) { e.preventDefault(); e.stopPropagation(); okBtn.click(); }
+      };
+      document.addEventListener("keydown", key, true);
+      document.body.append(overlay);
+      if (field) { field.focus(); field.select(); } else okBtn.focus();
+    });
+  }
+  const say = (message, title = "") => dialog({ title, message });
+  const ask = (message, { ok = "OK", danger = false, title = "" } = {}) => dialog({ title, message, ok, danger, cancel: "Annulla" });
+  const askText = (message, value = "", { ok = "OK", multiline = false, placeholder = "", title = "" } = {}) =>
+    dialog({ title, message, ok, cancel: "Annulla", input: { value, multiline, placeholder } });
+  // testo da copiare a mano (quando gli appunti non sono disponibili)
+  const showText = (message, value) => dialog({ message, ok: "Chiudi", input: { value, readOnly: true, multiline: value.length > 80 } });
 
   /* ---------- popover flottante: si chiude con clic esterno o Esc ---------- */
   function popover(id, { ignore = null, onClose = null } = {}) {
     const node = el("div", { id });
     let open = true;
-    const outside = (e) => { if (!node.contains(e.target) && !(ignore && e.target.closest?.(ignore))) close(); };
-    const key = (e) => { if (e.key === "Escape") close(); };
+    // le finestre di dialogo aperte dal popover non lo chiudono
+    const outside = (e) => {
+      if (!node.contains(e.target) && !e.target.closest?.("#ps-dialog") && !(ignore && e.target.closest?.(ignore))) close();
+    };
+    const key = (e) => { if (e.key === "Escape" && !document.getElementById("ps-dialog")) close(); };
     function close() {
       if (!open) return;
       open = false;
@@ -266,7 +319,7 @@
 
   Object.assign(PS, {
     SPRINT_FIELD, TASK, TS_MODEL,
-    getEnv, mod, Domain, el, fail, isolate, chk, setFlag, store, storeKeys, popover,
+    getEnv, mod, Domain, el, fill, fail, dialog, say, ask, askText, showText, isolate, chk, setFlag, store, storeKeys, popover,
     pad, iso, parseIso, fmtDay, fmtHours, eachDay, parseHours,
     evalCtx, sprintValue, recText, kanbanRecords, findRecord, walkOwl,
     ICONS, svg, PALETTE, rgba, darkText, colorHex, PRIO, PRIO_ORDER, prioOf, prioButton,

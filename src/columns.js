@@ -166,7 +166,7 @@
     const sig = JSON.stringify([counts, active, prioSig()]);
     if (sum.dataset.sig === sig) return;
     sum.dataset.sig = sig;
-    sum.replaceChildren(...PRIO_ORDER.filter((k) => counts[k]).map((k) => prioDot(k, counts[k], lname, active === k)));
+    PS.fill(sum, ...PRIO_ORDER.filter((k) => counts[k]).map((k) => prioDot(k, counts[k], lname, active === k)));
   }
 
   // [chiave US, { label, items }] in ordine naturale, con "Senza US" in fondo
@@ -263,7 +263,7 @@
     const src = list && groupOf(list, fromG), dst = list && groupOf(list, toG);
     const type = list?.fields?.[field]?.type;
     if (!src || !dst || !field || by.includes(":") || ["many2many", "one2many"].includes(type)) {
-      return alert("In questa vista non riesco a spostare il blocco: le colonne non corrispondono a un campo modificabile.");
+      return PS.say("In questa vista non riesco a spostare il blocco: le colonne non corrispondono a un campo modificabile.");
     }
     // le schede del blocco visibili (escluse quelle nascoste da filtro o ricerca; quelle del gruppo chiuso contano)
     const recs = kanbanRecords().filter(([c, r]) => c.closest(".o_kanban_group") === fromG && DECO_MODELS.includes(r.resModel)
@@ -272,7 +272,7 @@
     const label = k === "__none" ? "senza US" : `di ${usOf(recs[0][1])}`;
     const loaded = src.list?.records?.length ?? recs.length;
     const note = src.count > loaded ? "\n\nLa colonna non è caricata del tutto: vengono spostate solo le schede già visibili." : "";
-    if (!confirm(`Spostare ${recs.length} ${recs.length === 1 ? "scheda" : "schede"} ${label} da "${src.displayName}" a "${dst.displayName}"?${note}`)) return;
+    if (!(await PS.ask(`Spostare ${recs.length} ${recs.length === 1 ? "scheda" : "schede"} ${label} da "${src.displayName}" a "${dst.displayName}"?${note}`, { ok: "Sposta" }))) return;
     const { orm, notification } = PS.getEnv().services;
     const value = Array.isArray(dst.value) ? dst.value[0] : dst.value ?? false;
     await orm.write(recs[0][1].resModel, recs.map(([, r]) => r.resId), { [field]: value });
@@ -292,7 +292,7 @@
     sep.style.setProperty("--ps-us-fg", fg);
     sep.setAttribute("aria-expanded", String(!isClosed));
     sep.title = `${isClosed ? "Clic per mostrare le schede" : "Clic per nascondere le schede"}; trascina per spostare il blocco in un'altra colonna`;
-    sep.replaceChildren(
+    PS.fill(sep,
         el("span", { className: "chev", textContent: isClosed ? "▸" : "▾" }),
         el("span", { className: "name", textContent: gr.label }),
         k === "__none" ? null : colorDot(k, gr.label),
@@ -442,7 +442,7 @@
       const other = PRIO_ORDER.find((o) => o !== k && PRIO[o].colors.includes(c));
       if (other) {
         if (PRIO[other].colors.length === 1) {
-          alert(`${PALETTE[c][1]} è l'unico colore di "${PRIO[other].label}": aggiungi prima un altro colore a quella priorità.`);
+          PS.say(`${PALETTE[c][1]} è l'unico colore di "${PRIO[other].label}": aggiungi prima un altro colore a quella priorità.`);
           return false;
         }
         PRIO[other].colors = PRIO[other].colors.filter((x) => x !== c);
@@ -454,7 +454,7 @@
     } else if (own.length > 1) {
       own.shift();
     } else {
-      alert("Ogni priorità deve avere almeno un colore.");
+      PS.say("Ogni priorità deve avere almeno un colore.");
       return false;
     }
     return true;
@@ -499,7 +499,9 @@
       ...rows,
       el("p", { className: "hint", textContent: "Clic su un colore per aggiungerlo; di nuovo per renderlo principale (quello scritto quando scegli la priorità, con il punto); ancora per toglierlo." }),
       el("div", { className: "acts tight" }, el("button", { type: "button", textContent: "Ripristina priorità predefinite",
-        onclick: () => { if (confirm("Ripristinare nomi e colori predefiniti delle priorità?")) { resetPrio(); onChange(); } } })),
+        onclick: async () => {
+          if (await PS.ask("Ripristinare nomi e colori predefiniti delle priorità?", { ok: "Ripristina", danger: true })) { resetPrio(); onChange(); }
+        } })),
     ];
   }
 
@@ -701,7 +703,7 @@
       scopeSel.value = scope;
       scopeSel.onchange = () => { scope = scopeSel.value; draw(); };
 
-      pop.replaceChildren(...[
+      PS.fill(pop, ...[
         el("h4", { textContent: name }),
         ...filterSection(recs, colFilters[lname], colSettings(name).prio, setFilter, clearFilter),
         el("h4", { className: "sep", textContent: "Impostazioni" }),

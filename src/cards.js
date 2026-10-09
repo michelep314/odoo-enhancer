@@ -136,7 +136,7 @@
     const sig = JSON.stringify(labels.map((l) => [l.key, l.text, l.ci]));
     if (box.dataset.sig !== sig) {
       box.dataset.sig = sig;
-      box.replaceChildren(...labels.map((l) => makeChip(l, rec)));
+      PS.fill(box, ...labels.map((l) => makeChip(l, rec)));
     }
     return box;
   }

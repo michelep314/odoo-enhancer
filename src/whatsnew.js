@@ -26,7 +26,7 @@
 
   function renderNews(panel) {
     const [cur, ...old] = CHANGELOG;
-    panel.replaceChildren(
+    PS.fill(panel,
         el("h4", { textContent: `Novità di Odoo Enhancer · versione ${VERSION}` }),
         cur.date ? el("p", { className: "hint", textContent: fmtDate(cur.date) }) : null,
         ...cur.items.map(itemNode),

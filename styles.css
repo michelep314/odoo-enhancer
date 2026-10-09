@@ -58,6 +58,7 @@
 #ps-panel .ps-combo-list .opt{padding:6px 8px;border-radius:4px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #ps-panel .ps-combo-list .opt:hover{background:#3a3f4d}
 #ps-panel .ps-combo-list .opt.on{background:#714b67;color:#fff}
+#ps-panel .ps-combo-list .grp{padding:6px 8px 2px;color:#8d90a0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
 #ps-panel .ps-combo-list .empty{padding:6px 8px;color:#8d90a0}
 #ps-panel .days{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 #ps-panel .days span{padding:2px 7px;border-radius:4px;background:#1d2029;font-size:12px}
@@ -411,6 +412,55 @@ html[data-ps-look] .ps-us{border-radius:max(3px,calc(var(--ps-radius) * .45))}
 #ps-panel .ps-note-sound button{padding:4px 9px;font-size:12px}
 /* promemoria: data + ora a 24 ore */
 #ps-panel .ps-due{display:flex;align-items:center;gap:6px}
-#ps-panel .ps-due input[type=date]{flex:1;min-width:0}
+/* giorno: campo gg/mm/aaaa con calendario italiano (settimana da lunedì) */
+#ps-panel .ps-date{position:relative;flex:1;min-width:0;display:flex;gap:4px}
+#ps-panel .ps-date input{flex:1;min-width:0}
+#ps-panel .ps-date>.icon{flex:none;padding:0 8px}
+#ps-panel .ps-cal{position:absolute;left:0;top:calc(100% + 4px);z-index:3;width:236px;padding:8px;border:1px solid #4a5060;
+  border-radius:8px;background:#1d2029;box-shadow:0 8px 22px #000a}
+#ps-panel .ps-cal[hidden]{display:none}
+#ps-panel .ps-cal .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+#ps-panel .ps-cal .head strong{color:#fff;font-weight:600;text-transform:capitalize}
+#ps-panel .ps-cal .nav{width:28px;height:28px;padding:0;background:transparent;font-size:18px;line-height:1}
+#ps-panel .ps-cal .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+#ps-panel .ps-cal .wd{color:#8d90a0;font-size:11px;padding:2px 0}
+#ps-panel .ps-cal .d{height:28px;padding:0;background:transparent;font-size:12px}
+#ps-panel .ps-cal .d.today{box-shadow:inset 0 0 0 1px #017e84}
+#ps-panel .ps-cal .d.on{background:#714b67;color:#fff}
+#ps-panel .ps-cal .foot{display:flex;justify-content:space-between;margin-top:6px}
+#ps-panel .ps-cal .foot button{padding:3px 8px;background:transparent;color:#6CC1ED;font-size:12px}
 #ps-panel .ps-due select{width:auto;flex:none;padding:7px 4px;text-align:center}
 #ps-panel .ps-due span{color:#8d90a0;font-weight:600}
+/* note: scelta tra scheda di progetto e ticket, risultati con progetto/fase a destra */
+#ps-panel .ps-seg{display:inline-flex;gap:2px;margin-bottom:6px;padding:2px;border-radius:7px;background:#1d2029}
+#ps-panel .ps-seg button{padding:4px 10px;background:transparent;color:#b8bac4;font-size:12px}
+#ps-panel .ps-seg button.on{background:#714b67;color:#fff}
+#ps-panel .ps-combo-list .opt{display:flex;align-items:baseline;gap:8px}
+#ps-panel .ps-combo-list .opt span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ps-panel .ps-combo-list .opt small{flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:#8d90a0;font-size:11px}
+#ps-panel .ps-combo-list .opt.on small{color:#e6d6e0}
+
+/* ---------- Finestre di dialogo interne (al posto di alert/confirm/prompt del browser) ---------- */
+#ps-dialog{position:fixed;inset:0;z-index:10050;display:grid;place-items:center;padding:16px;background:rgba(10,12,18,.55);
+  backdrop-filter:blur(2px);animation:ps-dlg-in .12s ease-out}
+#ps-dialog .box{width:420px;max-width:100%;max-height:calc(100vh - 32px);overflow:auto;box-sizing:border-box;padding:16px;
+  border-radius:12px;background:#262a36;color:#e6e6ea;box-shadow:0 12px 40px #000b;font:13px/1.45 system-ui,sans-serif;
+  color-scheme:dark;animation:ps-dlg-box .14s ease-out}
+#ps-dialog h4{margin:0 0 8px;font-size:15px;font-weight:600;color:#fff}
+#ps-dialog .msg{margin:0;white-space:pre-line;overflow-wrap:anywhere}
+#ps-dialog input,#ps-dialog textarea{display:block;width:100%;box-sizing:border-box;margin-top:10px;padding:8px;border-radius:6px;
+  border:1px solid #4a5060;background:#1d2029;color:#e6e6ea;font:inherit;resize:vertical}
+#ps-dialog input:focus,#ps-dialog textarea:focus{outline:none;border-color:#714b67}
+#ps-dialog textarea{font:12px/1.4 ui-monospace,monospace}
+#ps-dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+#ps-dialog button{border:0;border-radius:6px;padding:7px 14px;background:#3a3f4d;color:#e6e6ea;font:inherit;cursor:pointer}
+#ps-dialog button:hover{background:#4a5060;color:#fff}
+#ps-dialog button.primary{background:#714b67;color:#fff}
+#ps-dialog button.primary:hover{background:#86597a}
+#ps-dialog button.danger{background:#c0392b;color:#fff}
+#ps-dialog button.danger:hover{background:#d64535}
+#ps-dialog button:focus-visible{outline:2px solid #017e84;outline-offset:2px}
+@keyframes ps-dlg-in{from{opacity:0}}
+@keyframes ps-dlg-box{from{opacity:0;transform:translateY(6px) scale(.98)}}
+@media (prefers-reduced-motion:reduce){#ps-dialog,#ps-dialog .box{animation:none}}

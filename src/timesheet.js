@@ -103,7 +103,7 @@
       // con il nome del progetto scelto nel campo mostro tutto l'elenco
       const words = cur && input.value === cur.display_name ? [] : norm(input.value).split(/\s+/).filter(Boolean);
       items = sorted.filter((p) => words.every((w) => norm(p.display_name).includes(w))).slice(0, MAX_OPTS);
-      list.replaceChildren(...(items.length
+      PS.fill(list, ...(items.length
           ? items.map((p) => el("div", { className: "opt", role: "option", textContent: p.display_name,
             onmousedown: (e) => { e.preventDefault(); pick(p); } }))  // mousedown: prima che il campo perda il focus
           : [el("div", { className: "empty", textContent: "Nessun progetto trovato" })]));
@@ -133,9 +133,11 @@
     return { node, get value() { return cur; }, set: (p) => pick(p, true) };
   }
 
+  const righe = (n) => `${n} ${n === 1 ? "riga" : "righe"}`;
+
   async function renderTs(env, panel) {
     const { orm, action } = env.services;
-    panel.replaceChildren(el("p", { className: "hint", textContent: "Carico i progetti…" }));
+    PS.fill(panel, el("p", { className: "hint", textContent: "Carico i progetti…" }));
     let projects = [];
     try {
       projects = await orm.searchRead("project.project", [["allow_timesheets", "=", true]],
@@ -144,15 +146,17 @@
 
     /* riga */
     const tplSel = el("select");
-    const fillTpl = () => tplSel.replaceChildren(
+    const fillTpl = () => PS.fill(tplSel,
         el("option", { value: "", textContent: templates.length ? "Scegli una riga salvata" : "Nessuna riga salvata" }),
         ...templates.map((t, i) => el("option", { value: String(i), textContent: t.label })));
     fillTpl();
     const delTpl = el("button", {
       className: "icon", textContent: "×", title: "Elimina la riga salvata",
-      onclick: () => {
+      onclick: async () => {
         const t = templates[tplSel.value];
-        if (t && confirm(`Eliminare "${t.label}"?`)) { templates.splice(Number(tplSel.value), 1); tsSave(); fillTpl(); }
+        if (!t || !(await PS.ask(`Eliminare la riga salvata "${t.label}"?`, { ok: "Elimina", danger: true }))) return;
+        const i = templates.indexOf(t);
+        if (i >= 0) { templates.splice(i, 1); tsSave(); fillTpl(); }
       },
     });
     const projSel = projectPicker(projects, (p) => { invalidate(); loadTasks(p?.id || null).catch(fail); });
@@ -161,7 +165,7 @@
     const hoursIn = el("input", { placeholder: "8, 7,5 oppure 7:30", value: "8" });
 
     async function loadTasks(pid, keep = null) {
-      taskSel.replaceChildren(el("option", { value: "", textContent: "Nessuna attività" }));
+      PS.fill(taskSel, el("option", { value: "", textContent: "Nessuna attività" }));
       taskSel.disabled = !pid;
       if (!pid) return;
       const tasks = await orm.searchRead(TASK, [["project_id", "=", pid], ["stage_id.fold", "=", false]],
@@ -194,15 +198,15 @@
     }
     const saveTpl = el("button", {
       textContent: "Salva come riga predefinita",
-      onclick: () => {
+      onclick: async () => {
         try {
           const r = currentRow();
-          const label = prompt("Nome della riga", r.task?.[1] || r.project[1]);
+          const label = await PS.askText("Nome della riga", r.task?.[1] || r.project[1], { ok: "Salva" });
           if (!label?.trim()) return;
           templates.push({ label: label.trim(), ...r });
           tsSave(); fillTpl();
           tplSel.value = String(templates.length - 1);
-        } catch (e) { alert("Impossibile salvare: " + e.message); }
+        } catch (e) { PS.say("Impossibile salvare: " + e.message); }
       },
     });
 
@@ -240,17 +244,17 @@
           const s = plan.skipped;
           const skippedTxt = [[s.weekend, "weekend"], [s.holiday, "festivi"], [s.leave, "ferie"], [s.filled, "già compilati"]]
               .filter(([a]) => a.length).map(([a, t]) => `${a.length} ${t}`).join(", ");
-          preview.replaceChildren(
+          PS.fill(preview,
               el("p", { className: "hint", textContent:
-                    `${plan.todo.length} righe da ${fmtHours(row.hours)} h, totale ${fmtHours(row.hours * plan.todo.length)} h.` +
+                    `${righe(plan.todo.length)} da ${fmtHours(row.hours)} h, totale ${fmtHours(row.hours * plan.todo.length)} h.` +
                     (skippedTxt ? ` Saltati: ${skippedTxt}.` : "") }),
               plan.leaveError ? el("p", { className: "warn", textContent: "Ferie non verificate: " + plan.leaveError }) : null,
               el("div", { className: "days" }, ...plan.todo.map((d) => el("span", { textContent: fmtDay(d) }))));
           createBtn.disabled = !plan.todo.length;
-          createBtn.textContent = plan.todo.length ? `Crea ${plan.todo.length} righe` : "Nessun giorno da compilare";
+          createBtn.textContent = plan.todo.length ? `Crea ${righe(plan.todo.length)}` : "Nessun giorno da compilare";
         } catch (e) {
           invalidate();
-          alert("Anteprima non riuscita: " + (e?.data?.message || e.message));
+          PS.say("Anteprima non riuscita: " + (e?.data?.message || e.message));
         }
       },
     });
@@ -258,18 +262,20 @@
     const reopen = () => (TS_ACTION ? action.doAction(TS_ACTION, { viewType: "grid", clearBreadcrumbs: true }) : null);
 
     async function undo() {
-      if (!lastIds?.length || !confirm(`Eliminare le ${lastIds.length} righe appena create?`)) return;
+      if (!lastIds?.length) return;
+      const msg = lastIds.length === 1 ? "Eliminare la riga appena creata?" : `Eliminare le ${lastIds.length} righe appena create?`;
+      if (!(await PS.ask(msg, { ok: "Elimina", danger: true }))) return;
       try {
         await orm.unlink(TS_MODEL, lastIds);
         lastIds = null;
-        preview.replaceChildren(el("p", { className: "hint", textContent: "Inserimento annullato." }));
+        PS.fill(preview, el("p", { className: "hint", textContent: "Inserimento annullato." }));
         await reopen();
       } catch (e) { fail(e); }
     }
 
     createBtn.onclick = async () => {
       if (!plan?.todo.length || !row) return;
-      if (!confirm(`Creare ${plan.todo.length} righe di foglio ore?`)) return;
+      if (!(await PS.ask(`Creare ${righe(plan.todo.length)} di foglio ore?`, { ok: "Crea" }))) return;
       createBtn.disabled = true;
       try {
         lastIds = await orm.create(TS_MODEL, plan.todo.map((date) => ({
@@ -279,15 +285,15 @@
           name: row.name || "/",
           unit_amount: row.hours,
         })));
-        preview.replaceChildren(
-            el("p", { className: "hint", textContent: `Create ${lastIds.length} righe.` }),
+        PS.fill(preview,
+            el("p", { className: "hint", textContent: lastIds.length === 1 ? "Creata 1 riga." : `Create ${lastIds.length} righe.` }),
             el("div", { className: "acts" }, el("button", { textContent: "Annulla inserimento", onclick: undo })));
         invalidate();
         await reopen();
       } catch (e) { fail(e); createBtn.disabled = false; }
     };
 
-    panel.replaceChildren(
+    PS.fill(panel,
         el("h4", { textContent: "Fogli ore" }),
         el("label", { textContent: "Riga salvata" }), el("div", { className: "inline" }, tplSel, delTpl),
         el("label", { textContent: "Progetto" }), projSel.node,

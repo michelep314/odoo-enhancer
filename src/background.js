@@ -180,17 +180,17 @@
       fileIn.value = "";
       const need = screenNeed();
       if (Math.max(img.w, img.h) < need * 0.8) {
-        alert(`L'immagine è ${img.w}×${img.h} px, ma il tuo schermo ne richiede circa ${need} sul lato lungo: apparirà sgranata. Usa un'immagine più grande.`);
+        PS.say(`L'immagine è ${img.w}×${img.h} px, ma il tuo schermo ne richiede circa ${need} sul lato lungo: apparirà sgranata. Usa un'immagine più grande.`);
       }
     })());
 
     const urlIn = el("input", { placeholder: "https://…/immagine.jpg" });
     const urlBtn = el("button", { textContent: "Usa link", onclick: () => run((async () => {
       let u;
-      try { u = new URL(urlIn.value.trim()); } catch { return alert("Link non valido."); }
-      if (!/^https?:$/.test(u.protocol)) return alert("Usa un link http o https.");
+      try { u = new URL(urlIn.value.trim()); } catch { return PS.say("Link non valido."); }
+      if (!/^https?:$/.test(u.protocol)) return PS.say("Usa un link http o https.");
       const ok = await new Promise((res) => { const im = new Image(); im.onload = () => res(true); im.onerror = () => res(false); im.src = u.href; });
-      if (!ok) return alert("Immagine non caricabile: link errato o bloccato dal sito che la ospita.");
+      if (!ok) return PS.say("Immagine non caricabile: link errato o bloccato dal sito che la ospita.");
       await setScope({ type: "url", value: u.href });
     })()) });
 
@@ -201,7 +201,7 @@
     };
     scopeSel.onchange = syncDim;
 
-    panel.replaceChildren(
+    PS.fill(panel,
         el("h4", { textContent: "Sfondo" }),
         el("label", { textContent: "Applica a" }), scopeSel,
         el("p", { className: "hint", textContent: "La vista vince sull'app, l'app su tutte le pagine. ● = ha già uno sfondo." }),

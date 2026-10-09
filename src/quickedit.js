@@ -63,7 +63,10 @@
   const QE_MODELS = [TASK];
 
   let qe = null, taskFields = null;
-  const qeKey = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeQE(); } };
+  // con una finestra di dialogo aperta Esc chiude solo quella
+  const qeKey = (e) => {
+    if (e.key === "Escape" && !document.getElementById("ps-dialog")) { e.preventDefault(); e.stopPropagation(); closeQE(); }
+  };
   function closeQE() {
     if (!qe) return;
     document.removeEventListener("keydown", qeKey, true);
@@ -149,9 +152,9 @@
       if (popFor === btn && !pop.hidden) return hidePop();
       popFor = btn;
       pop.hidden = false;
-      pop.replaceChildren(el("p", { className: "hint", textContent: "Carico…" }));
+      PS.fill(pop, el("p", { className: "hint", textContent: "Carico…" }));
       placePop(btn);
-      try { pop.replaceChildren(...(await build()).filter(Boolean)); }
+      try { PS.fill(pop, ...(await build()).filter(Boolean)); }
       catch (e) { hidePop(); return fail(e); }
       placePop(btn);
     }
@@ -164,7 +167,7 @@
       const createBtn = onCreate ? el("button", { className: "qe-create", hidden: true }) : null;
       const draw = () => {
         const q = search.value.trim().toLowerCase();
-        list.replaceChildren(...items.filter((i) => i.name.toLowerCase().includes(q)).slice(0, 200).map((i) => {
+        PS.fill(list, ...items.filter((i) => i.name.toLowerCase().includes(q)).slice(0, 200).map((i) => {
           const cb = el("input", { type: "checkbox", checked: sel.has(i.id),
             onchange: () => (cb.checked ? sel.add(i.id) : sel.delete(i.id)) });
           return el("label", { className: "chk" }, cb, i.name);
@@ -248,7 +251,7 @@
       const loadStages = async () => {
         const st = await orm.searchRead("project.task.type", [["project_ids", "in", [Number(projSel.value)]]],
             ["name"], { order: "sequence, id" });
-        stageSel.replaceChildren(...st.map((x) => el("option", { value: String(x.id), textContent: x.name })));
+        PS.fill(stageSel, ...st.map((x) => el("option", { value: String(x.id), textContent: x.name })));
         if (st.some((x) => x.id === data.stage_id?.[0])) stageSel.value = String(data.stage_id[0]);
       };
       projSel.onchange = () => loadStages().catch(fail);
@@ -294,7 +297,7 @@
 
       async function submit(preset) {
         const hours = preset ?? parseHours(hIn.value);
-        if (!hours) { alert("Ore non valide (es. 2, 1,5 o 1:30)."); hIn.focus(); return; }
+        if (!hours) { await PS.say("Ore non valide (es. 2, 1,5 o 1:30)."); hIn.focus(); return; }
         try {
           const r2 = await orm.create(TS_MODEL, [{
             date: dIn.value || todayIso(),
@@ -373,10 +376,10 @@
     const copyLink = async () => {
       const url = `${location.origin}/web#id=${id}&model=${TASK}&view_type=form`;
       try { await navigator.clipboard.writeText(url); notification.add("Link copiato.", { type: "info" }); }
-      catch { prompt("Copia il link:", url); }
+      catch { PS.showText("Copia il link:", url); }
     };
     const archive = async () => {
-      if (!confirm("Archiviare la scheda?")) return;
+      if (!(await PS.ask("Archiviare la scheda?", { ok: "Archivia", danger: true }))) return;
       await orm.write(TASK, [id], { active: false });
       closeQE();
       await refreshView();

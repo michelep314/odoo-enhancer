@@ -81,9 +81,10 @@
 
     const list = ok.map(([k]) => sectionName(k));
     if (images.length) list.push(images.length === 1 ? "1 immagine di sfondo" : `${images.length} immagini di sfondo`);
-    if (!confirm(`Ripristinare da questo backup?\n\n• ${list.join("\n• ")}` +
+    if (!(await PS.ask(`Ripristinare da questo backup?\n\n• ${list.join("\n• ")}` +
         (skipped.length ? `\n\nSaltate perché non valide: ${skipped.join(", ")}.` : "") +
-        "\n\nQueste sezioni sostituiranno quelle attuali (le altre restano come sono) e la pagina verrà ricaricata.")) return;
+        "\n\nQueste sezioni sostituiranno quelle attuali (le altre restano come sono) e la pagina verrà ricaricata.",
+        { ok: "Ripristina", danger: true }))) return;
 
     for (const [k, b] of images) await PS.idb.set(k, b);
     for (const [k, v] of ok) localStorage.setItem(k, JSON.stringify(v));
@@ -97,7 +98,7 @@
     fileIn.onchange = () => {
       const f = fileIn.files?.[0];
       fileIn.value = "";
-      if (f) importConfig(f).catch((e) => alert("Ripristino non riuscito: " + (e?.message || e)));
+      if (f) importConfig(f).catch((e) => PS.say("Ripristino non riuscito: " + (e?.message || e)));
     };
     return [
       el("h4", { className: "sep", textContent: "Backup di tutta la configurazione" }),

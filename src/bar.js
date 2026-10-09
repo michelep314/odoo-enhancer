@@ -125,7 +125,7 @@
 
   async function open(b) {
     const env = getEnv();
-    if (!env || !mod("@web/core/domain")) return alert("Odoo non ancora caricato: riprova tra un secondo.");
+    if (!env || !mod("@web/core/domain")) return PS.say("Odoo non ancora caricato: riprova tra un secondo.");
     const { orm, action } = env.services;
     const ctx = evalCtx(env, b);
     const info = await actionInfo(orm, b.actionId);
@@ -147,7 +147,7 @@
     let name = b.label;
     if (b.sprint != null && b.model === TASK) {
       const n = await sprintValue(orm, b.sprint);
-      if (n === null) return alert("Nessuno sprint trovato.");
+      if (n === null) return PS.say("Nessuno sprint trovato.");
       domain = withSprint(domain, n);
       name += ` (#${n})`;
     }
@@ -188,7 +188,8 @@
   // clic fuori dal pannello o Esc: si chiude. I pulsanti della barra che aprono pannelli lo gestiscono da sé
   // (ri-cliccarli lo chiude, un altro pannello lo sostituisce)
   document.addEventListener("mousedown", (e) => {
-    if (panel && !panel.contains(e.target) && !e.target.closest?.("[data-panel]")) closePanel();
+    // le finestre di dialogo aperte dal pannello non lo chiudono
+    if (panel && !panel.contains(e.target) && !e.target.closest?.("[data-panel], #ps-dialog")) closePanel();
   }, true);
   document.addEventListener("keydown", (e) => {
     if (panel && e.key === "Escape" && !e.defaultPrevented) closePanel();  // dopo gli Esc gestiti nei campi del pannello
@@ -198,7 +199,7 @@
     closePanel();
     if (same) return;
     const env = getEnv();
-    if (!env) return alert("Odoo non ancora caricato: riprova tra un secondo.");
+    if (!env) return PS.say("Odoo non ancora caricato: riprova tra un secondo.");
     panel = el("div", { id: "ps-panel" });
     panelKind = kind;
     document.body.append(panel);
@@ -209,14 +210,14 @@
   }
 
   const fillViewSelect = (sel, modes, current) => {
-    sel.replaceChildren(...modes.map((m) => el("option", { value: m, textContent: viewName(m) })));
+    PS.fill(sel, ...modes.map((m) => el("option", { value: m, textContent: viewName(m) })));
     sel.value = modes.includes(current) ? current : modes[0];
   };
 
   async function renderPanel(env) {
     if (!panel) return;
     const { orm } = env.services;
-    panel.replaceChildren(el("p", { className: "hint", textContent: "Carico i preferiti…" }));
+    PS.fill(panel, el("p", { className: "hint", textContent: "Carico i preferiti…" }));
     let favs = [];
     try { favs = await favorites(env); } catch (e) { fail(e); }
 
@@ -265,7 +266,7 @@
       urlData = null;
       if (urlIn.value.trim()) {
         try { urlData = parseOdooUrl(urlIn.value); }
-        catch (e) { return alert("URL non valido: " + e.message); }
+        catch (e) { return PS.say("URL non valido: " + e.message); }
       }
       refresh().catch(fail);
     };
@@ -273,7 +274,7 @@
       title: "Compila l'URL con menu, vista e progetto della pagina aperta",
       onclick: () => {
         const u = currentPageUrl(env);
-        if (!u) return alert("La pagina corrente non è una vista salvabile: aprila dal menu di Odoo e riprova.");
+        if (!u) return PS.say("La pagina corrente non è una vista salvabile: aprila dal menu di Odoo e riprova.");
         urlIn.value = u;
         urlIn.onchange();
       } });
@@ -286,10 +287,10 @@
       onclick: async () => {
         try {
           const { f, actionId, info, model } = await resolve();
-          if (!f && !urlData) return alert("Scegli un preferito, incolla un URL o entrambi.");
-          if (!model) return alert("Non riesco a capire il modello: controlla l'URL.");
+          if (!f && !urlData) return PS.say("Scegli un preferito, incolla un URL o entrambi.");
+          if (!model) return PS.say("Non riesco a capire il modello: controlla l'URL.");
           if (f && f.model_id !== model &&
-              !confirm(`Il preferito è su ${f.model_id}, l'URL su ${model}. Continuare?`)) return;
+              !(await PS.ask(`Il preferito è su ${f.model_id}, l'URL su ${model}. Continuare?`, { ok: "Continua" }))) return;
           buttons.push({
             label: nameIn.value.trim() || f?.name || info?.name || model,
             model,
@@ -326,45 +327,47 @@
               el("button", { className: "icon", textContent: "↓", title: "Sposta giù", disabled: i === buttons.length - 1,
                 onclick: () => swap(i + 1) }),
               el("button", { className: "icon", textContent: "✎", title: "Rinomina",
-                onclick: () => {
-                  const v = prompt("Nuovo nome", b.label);
+                onclick: async () => {
+                  const v = await PS.askText("Nuovo nome del pulsante", b.label, { ok: "Rinomina" });
                   if (v?.trim()) { b.label = v.trim(); commit(); }
                 } }),
               el("button", { className: "icon del", textContent: "×", title: "Elimina",
-                onclick: () => { if (confirm(`Eliminare "${b.label}"?`)) { buttons.splice(i, 1); commit(); } } })));
+                onclick: async () => {
+                  if (await PS.ask(`Eliminare "${b.label}"?`, { ok: "Elimina", danger: true })) { buttons.splice(i, 1); commit(); }
+                } })));
     });
 
     const exportBtn = el("button", {
       textContent: "Esporta pulsanti",
       onclick: async () => {
         const j = JSON.stringify(buttons, null, 2);
-        try { await navigator.clipboard.writeText(j); alert("Configurazione copiata negli appunti."); }
-        catch { prompt("Copia la configurazione:", j); }
+        try { await navigator.clipboard.writeText(j); PS.say("Configurazione copiata negli appunti."); }
+        catch { PS.showText("Copia la configurazione:", j); }
       },
     });
     const importBtn = el("button", {
       textContent: "Importa pulsanti",
-      onclick: () => {
-        const j = prompt("Incolla la configurazione esportata:");
+      onclick: async () => {
+        const j = await PS.askText("Incolla la configurazione esportata:", "", { ok: "Importa", multiline: true });
         if (!j) return;
         try {
           const v = JSON.parse(j);
           if (!Array.isArray(v) || !v.every((x) => typeof x?.label === "string" && typeof x?.model === "string"))
             throw new Error("formato non valido");
           buttons = v; commit();
-        } catch (e) { alert("Importazione non riuscita: " + e.message); }
+        } catch (e) { PS.say("Importazione non riuscita: " + e.message); }
       },
     });
     const resetBtn = el("button", {
       textContent: "Ripristina predefiniti",
-      onclick: () => {
-        if (confirm("Sostituire tutti i pulsanti con quelli predefiniti?")) {
+      onclick: async () => {
+        if (await PS.ask("Sostituire tutti i pulsanti con quelli predefiniti?", { ok: "Sostituisci", danger: true })) {
           buttons = structuredClone(DEFAULTS); commit();
         }
       },
     });
 
-    panel.replaceChildren(
+    PS.fill(panel,
         el("h4", { textContent: "Nuovo pulsante" }),
         el("label", { textContent: "URL della vista" }), el("div", { className: "inline" }, urlIn, hereBtn),
         el("label", { textContent: "Preferito (filtri)" }), favSel,
@@ -491,7 +494,7 @@
         () => toggleTray().catch(fail));
     toggle.classList.add("ps-tray-toggle");
     toggle.setAttribute("aria-expanded", String(open));
-    tray.replaceChildren(...(open ? toolButtons() : []), toggle);
+    PS.fill(tray, ...(open ? toolButtons() : []), toggle);
   }
 
   /* ---------- barra in basso: scorciatoie (e strumenti se la barra di Odoo non c'è) ---------- */
@@ -502,7 +505,7 @@
     const fallback = !inTray;
     bar.classList.toggle("ps-has-new", fallback && hasAlert());  // pallino anche sul ☰ quando la barra è ridotta
     bar.classList.toggle("empty", !fallback && !buttons.length);
-    bar.replaceChildren(
+    PS.fill(bar,
         el("button", { className: "ps-toggle", textContent: "☰", title: "Mostra/nascondi (Alt+P)", onclick: toggleBar }),
         ...buttons.map((b) => el("button", { textContent: b.label, onclick: () => open(b).catch(fail) })),
         ...(fallback ? toolButtons() : []));
