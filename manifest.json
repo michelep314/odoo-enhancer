@@ -1,12 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Odello",
-  "version": "1.22",
+  "version": "1.23",
   "description": "Nuove funzionalita' per personalizzare odoo",
   "content_scripts": [
     {
-      "matches": ["https://*.odoo.com/web*"],
-      "css": ["styles.css"],
+      "matches": [
+        "https://*.odoo.com/web*"
+      ],
+      "css": [
+        "styles.css"
+      ],
       "js": [
         "src/core.js",
         "src/changelog.js",
@@ -25,6 +29,21 @@
       ],
       "run_at": "document_idle",
       "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://*.odoo.com/web*"
+      ],
+      "js": [
+        "src/bridge.js"
+      ],
+      "run_at": "document_idle"
     }
+  ],
+  "background": {
+    "service_worker": "src/sw.js"
+  },
+  "host_permissions": [
+    "https://chat.googleapis.com/*"
   ]
 }

@@ -503,6 +503,12 @@
         el("div", { className: "acts" }, el("button", { textContent: "Chiudi", onclick: () => PS.togglePanel("notes") })));
   }
 
+  // apre il pannello note sulla scheda "Avvisi automatici" (dalla campanella delle colonne)
+  function openWatchTab() {
+    tab = "watch";
+    PS.togglePanel("notes").catch(fail);
+  }
+
   // chime e soundOn servono anche agli avvisi automatici (watch.js)
-  Object.assign(PS, { renderNotes, notesDue: dueCount, notesBadge, chime, soundOn: () => OPTS.load().sound });
+  Object.assign(PS, { openWatchTab, renderNotes, notesDue: dueCount, notesBadge, chime, soundOn: () => OPTS.load().sound });
 })();

@@ -132,6 +132,51 @@
     action.doAction(p).catch(fail);
   }
 
+  /* ---------- Google Chat: webhook in arrivo di uno spazio, inviato dall'estensione (bridge.js → sw.js) ---------- */
+  const CHAT_RE = /^https:\/\/chat\.googleapis\.com\/v1\/spaces\/[^/?#]+\/messages\?\S+$/;
+  const OPTS = store("ps-watch-opts-v1", { chatUrl: "" }, (v) => v && typeof v.chatUrl === "string");
+  let chatSeq = 0;
+  const chatWait = new Map();
+  addEventListener("message", (e) => {
+    if (e.source !== window || e.data?.__ps !== "gchat:res") return;
+    const done = chatWait.get(e.data.id);
+    if (done) { chatWait.delete(e.data.id); done(e.data); }
+  });
+  // → { ok, status?, error? }
+  function sendChat(url, text) {
+    return new Promise((resolve) => {
+      const id = `c${++chatSeq}-${Date.now()}`;
+      const timer = setTimeout(() => {
+        chatWait.delete(id);
+        resolve({ ok: false, error: "l'estensione non risponde: ricaricala da chrome://extensions e poi ricarica la pagina" });
+      }, 15000);
+      chatWait.set(id, (r) => { clearTimeout(timer); resolve(r); });
+      window.postMessage({ __ps: "gchat", id, url, text }, location.origin);
+    });
+  }
+  // testo per Google Chat: *grassetto* e link <url|testo> alle schede
+  function chatText(r, fresh) {
+    const model = r.kind === "ticket" ? TICKET : TASK;
+    const what = r.kind === "ticket"
+      ? (fresh.length === 1 ? "Nuovo ticket" : `${fresh.length} nuovi ticket`)
+      : (fresh.length === 1 ? "Nuova scheda" : `${fresh.length} nuove schede`);
+    const clean = (t) => String(t).replace(/[<>|]/g, " ");
+    const lines = fresh.slice(0, 15).map((x) =>
+      `• <${location.origin}/web#id=${x.id}&model=${model}&view_type=form|#${x.id} ${clean(x.display_name)}>`);
+    if (fresh.length > 15) lines.push(`… e altre ${fresh.length - 15}`);
+    return `🔔 *${what} · ${clean(r.name)}*\n_${clean(describe(r))}_\n${lines.join("\n")}`;
+  }
+  let chatErrShown = 0;
+  async function notifyChat(r, fresh) {
+    const res = await sendChat(r.chat, chatText(r, fresh));
+    if (res.ok) return;
+    console.warn(`[pulsantiera] Google Chat, avviso "${r.name}":`, res);
+    if (Date.now() - chatErrShown > 600000) {  // al massimo un avviso di errore ogni 10 minuti
+      chatErrShown = Date.now();
+      getEnv()?.services.notification?.add(`Invio a Google Chat non riuscito per "${r.name}": ${res.error || res.status}`, { type: "danger" });
+    }
+  }
+
   function notify(r, fresh) {
     const notification = getEnv()?.services.notification;
     if (!notification || !fresh.length) return;
@@ -178,8 +223,8 @@
           x.checked = Date.now();
         });
         if (res.fresh.length) {
-          notify(r, res.fresh);
-          rang = true;
+          if (!r.chatOnly) { notify(r, res.fresh); rang = true; }
+          if (r.chat) notifyChat(r, res.fresh).catch(() => {});
         }
       }
       if (rang && PS.soundOn?.()) PS.chime?.();
@@ -188,6 +233,118 @@
   setInterval(() => poll().catch((e) => console.warn("[pulsantiera] avvisi:", e)), POLL_MS);
   setTimeout(() => poll().catch(() => {}), 8000);
 
+  /* ---------- pezzi comuni a scheda "Avvisi" e campanella 🔔 delle colonne ---------- */
+  // priorità a scelta multipla: pulsanti da accendere/spegnere (nessuno acceso = tutte)
+  function prioToggles(options) {
+    const on = new Set();
+    const box = el("div", { className: "ps-prio-pick" });
+    function draw(opts) {
+      PS.fill(box, ...opts.map(([k, label, hex]) => {
+        const b = el("button", { type: "button", className: `ps-prio${on.has(k) ? " on" : ""}`, textContent: label,
+          onclick: () => { if (on.has(k)) on.delete(k); else on.add(k); draw(opts); } });
+        b.style.setProperty("--pc", hex);
+        b.setAttribute("aria-pressed", String(on.has(k)));
+        return b;
+      }));
+    }
+    draw(options);
+    return { node: box, get value() { return [...on]; }, redraw: draw };
+  }
+  const taskPrioToggles = () => prioToggles(PRIO_ORDER.map((k) => [k, PRIO[k].label, prioHex(k)]));
+  function everySel() {
+    const sel = el("select", { title: "Ogni quanto controllare su Odoo" },
+        ...EVERY.map((m) => el("option", { value: String(m), textContent: everyText(m) })));
+    sel.value = String(DEFAULT_EVERY);
+    return sel;
+  }
+  const sprintSelect = (value = "any") => {
+    const sel = el("select", {},
+        el("option", { value: "any", textContent: "Qualsiasi sprint" }),
+        el("option", { value: "cur", textContent: "Sprint corrente" }),
+        el("option", { value: "curprev", textContent: "Sprint corrente o precedente" }));
+    sel.value = value;
+    return sel;
+  };
+
+  // Google Chat: casella + webhook + prova; apply(r) aggiunge chat/chatOnly alla regola (false se il link non va)
+  function chatFields() {
+    const chatL = chk("Avvisa anche su Google Chat", false);
+    const chatIn = el("input", { placeholder: "https://chat.googleapis.com/v1/spaces/…/messages?key=…&token=…",
+      value: OPTS.load().chatUrl, spellcheck: false });
+    const chatOnlyL = chk("Solo su Google Chat (niente notifica in Odoo)", false);
+    const chatTest = el("button", { type: "button", textContent: "Invia prova", onclick: async () => {
+      const url = chatIn.value.trim();
+      if (!CHAT_RE.test(url)) return PS.say("Incolla il link del webhook di Google Chat: inizia con https://chat.googleapis.com/v1/spaces/");
+      chatTest.disabled = true;
+      const res = await sendChat(url, "✅ *Odoo Enhancer*: prova del webhook riuscita. Qui arriveranno gli avvisi automatici.");
+      chatTest.disabled = false;
+      if (res.ok) getEnv()?.services.notification?.add("Messaggio di prova inviato su Google Chat.", { type: "success" });
+      else PS.say("Invio non riuscito: " + (res.error || `HTTP ${res.status}`));
+    } });
+    const chatBox = el("div", { hidden: true, className: "ps-chat" },
+        el("div", { className: "inline" }, chatIn, chatTest),
+        chatOnlyL,
+        el("p", { className: "hint", textContent: "Il link si trova nello spazio di Google Chat: nome dello spazio → App e integrazioni → Webhook → Aggiungi. Chi ha il link può scrivere nello spazio: tienilo riservato." }));
+    chatL.control.addEventListener("change", () => { chatBox.hidden = !chatL.control.checked; if (chatL.control.checked) chatIn.focus(); });
+    return {
+      node: el("div", {}, chatL, chatBox),
+      apply(r) {
+        if (!chatL.control.checked) return true;
+        const url = chatIn.value.trim();
+        if (!CHAT_RE.test(url)) { PS.say("Il webhook di Google Chat deve iniziare con https://chat.googleapis.com/v1/spaces/"); return false; }
+        Object.assign(r, { chat: url, chatOnly: chatOnlyL.control.checked });
+        OPTS.save({ ...OPTS.load(), chatUrl: url });  // proposto per il prossimo avviso
+        return true;
+      },
+    };
+  }
+
+  const newRule = (kind, every) => ({ id: `w${Date.now().toString(36)}`, kind, on: true, every, seen: null, since: null });
+  function addRule(r) {
+    r.name ||= describe(r).replace(/^Nuov[ao] (scheda|ticket) · /, "");
+    mutate((rules) => rules.push(r));
+    PS.decorate?.();  // aggiorna le campanelle delle colonne
+    poll(r.id).catch(() => {});  // fotografia iniziale subito: gli avvisi partono dalle prossime novità
+    getEnv()?.services.notification?.add(`Avviso "${r.name}" attivo: controllo ${everyText(r.every)}.`, { type: "success" });
+  }
+
+  const ago = (t) => {
+    if (!t) return "non ancora controllato";
+    const m = Math.round((Date.now() - t) / 60000);
+    return m < 1 ? "controllato ora" : `controllato ${m} min fa`;
+  };
+  // riga di un avviso: attivo/sospeso, frequenza, elimina; onChange() dopo ogni modifica
+  function ruleRow(r, onChange) {
+    const onBox = el("input", { type: "checkbox", checked: r.on, title: r.on ? "Sospendi" : "Riattiva" });
+    onBox.onchange = () => {
+      // riattivando riparte dalla situazione attuale: niente avvisi per ciò che è successo mentre era sospeso
+      mutate((all) => { const x = all.find((y) => y.id === r.id); if (x) { x.on = onBox.checked; x.seen = null; x.since = null; } });
+      PS.decorate?.();
+      onChange();
+      if (onBox.checked) poll(r.id).catch(() => {});
+    };
+    const rowEvery = everySel();
+    rowEvery.className = "mini";
+    rowEvery.value = String(everyOf(r));
+    rowEvery.onchange = () => {
+      mutate((all) => { const x = all.find((y) => y.id === r.id); if (x) x.every = Number(rowEvery.value); });
+      onChange();
+    };
+    return el("div", { className: `ps-note${r.on ? "" : " done"}` },
+        onBox,
+        el("div", { className: "body" },
+            el("div", { className: "text", textContent: `${r.kind === "ticket" ? "🎫" : "📋"} ${r.name}` }),
+            el("div", { className: "meta" }, el("span", { textContent: `${describe(r)}${r.chat ? (r.chatOnly ? " · 💬 solo Google Chat" : " · 💬 anche Google Chat") : ""} · ${r.on ? ago(r.checked) : "sospeso"}` }))),
+        el("span", { className: "tools" },
+            rowEvery,
+            el("button", { type: "button", className: "icon del", textContent: "×", title: "Elimina l'avviso", onclick: async () => {
+              if (!(await PS.ask(`Eliminare l'avviso "${r.name}"?`, { ok: "Elimina", danger: true }))) return;
+              mutate((all) => { const i = all.findIndex((y) => y.id === r.id); if (i >= 0) all.splice(i, 1); });
+              PS.decorate?.();
+              onChange();
+            } })));
+  }
+
   /* ---------- scheda "Avvisi automatici" nel pannello note ---------- */
   function renderWatch(box, onCount) {
     const orm = getEnv()?.services.orm;
@@ -195,47 +352,23 @@
     let teamsOk = true;
 
     const nameIn = el("input", { placeholder: "Nome dell'avviso (facoltativo)" });
+    const chat = chatFields();
     // progetto: campo con ricerca come nei fogli ore (Omnibus in cima, poi "Progetto…"); vuoto = tutti
     const projSel = PS.projectPicker([], () => loadStages().catch(fail), { placeholder: "Tutti i progetti (scrivi per cercare)" });
     const stageSel = el("select", {}, el("option", { value: "", textContent: "Qualsiasi colonna" }));
-    const sprintSel = el("select", {},
-        el("option", { value: "any", textContent: "Qualsiasi sprint" }),
-        el("option", { value: "cur", textContent: "Sprint corrente" }),
-        el("option", { value: "curprev", textContent: "Sprint corrente o precedente" }));
+    const sprintSel = sprintSelect();
     const usIn = el("input", { placeholder: "User story (facoltativa, es. US612.1)" });
     const mineL = chk("Solo schede assegnate a me", false);
     const teamSel = el("select", {}, el("option", { value: "", textContent: "Tutti i team" }));
     const unassL = chk("Solo ticket non assegnati", false);
 
-    // priorità a scelta multipla: pulsanti da accendere/spegnere (nessuno acceso = tutte)
-    function prioToggles(options) {
-      const on = new Set();
-      const box = el("div", { className: "ps-prio-pick" });
-      function draw(opts) {
-        PS.fill(box, ...opts.map(([k, label, hex]) => {
-          const b = el("button", { type: "button", className: `ps-prio${on.has(k) ? " on" : ""}`, textContent: label,
-            onclick: () => { if (on.has(k)) on.delete(k); else on.add(k); draw(opts); } });
-          b.style.setProperty("--pc", hex);
-          b.setAttribute("aria-pressed", String(on.has(k)));
-          return b;
-        }));
-      }
-      draw(options);
-      return { node: box, get value() { return [...on]; }, redraw: draw };
-    }
-    const taskPrio = prioToggles(PRIO_ORDER.map((k) => [k, PRIO[k].label, prioHex(k)]));
+    const taskPrio = taskPrioToggles();
     const TICKET_HEX = ["#9aa0b0", "#30C381", "#F7CD1F", "#F06050"];
     const ticketPrioOpts = () => ticketPrios.map(([k, label], i) => [k, label, TICKET_HEX[Math.min(i, 3)]]);
     const ticketPrio = prioToggles(ticketPrioOpts());
     orm?.call(TICKET, "fields_get", [["priority"]], { attributes: ["selection"] })
         .then((f) => { if (f?.priority?.selection?.length) { ticketPrios = f.priority.selection; ticketPrio.redraw(ticketPrioOpts()); } })
         .catch(() => {});
-    const everySel = () => {
-      const sel = el("select", { title: "Ogni quanto controllare su Odoo" },
-          ...EVERY.map((m) => el("option", { value: String(m), textContent: everyText(m) })));
-      sel.value = String(DEFAULT_EVERY);
-      return sel;
-    };
     const everyIn = everySel();
 
     const opt = (r) => el("option", { value: String(r.id), textContent: r.display_name || r.name });
@@ -299,7 +432,8 @@
     const selected = (sel) => (sel.value ? [Number(sel.value), sel.selectedOptions[0].textContent] : null);
     const addBtn = el("button", { className: "primary", textContent: "Crea avviso", onclick: async () => {
       if (kind === "ticket" && !teamsOk) return PS.say("Helpdesk non disponibile: modulo assente o senza accesso ai ticket.");
-      const r = { id: `w${Date.now().toString(36)}`, kind, on: true, every: Number(everyIn.value), seen: null, since: null };
+      const r = newRule(kind, Number(everyIn.value));
+      if (!chat.apply(r)) return;
       if (kind === "task") {
         Object.assign(r, { project: projSel.value ? [projSel.value.id, projSel.value.display_name] : null, stage: stageSel.value ? [null, stageSel.value] : null, sprint: sprintSel.value,
           us: usIn.value.trim().toUpperCase(), mine: mineL.control.checked, usField: PS.usFieldName?.() || null,
@@ -309,14 +443,12 @@
       } else {
         Object.assign(r, { team: selected(teamSel), unassigned: unassL.control.checked, tprios: ticketPrio.value });
       }
-      r.name = nameIn.value.trim() || describe(r).replace(/^Nuov[ao] (scheda|ticket) · /, "");
-      mutate((rules) => rules.push(r));
+      r.name = nameIn.value.trim();
+      addRule(r);
       nameIn.value = ""; usIn.value = "";
       form.open = false;
       drawList();
       onCount?.();
-      poll(r.id).catch(() => {});  // fotografia iniziale subito: gli avvisi partono dalle prossime novità
-      getEnv()?.services.notification?.add(`Avviso "${r.name}" attivo: controllo ${everyText(r.every)}.`, { type: "success" });
     } });
 
     const form = el("details", { className: "ps-note-new" },
@@ -324,47 +456,15 @@
         seg, taskPart, ticketPart,
         el("label", { textContent: "Nome" }), nameIn,
         el("label", { textContent: "Controlla" }), everyIn,
+        chat.node,
         el("p", { className: "hint", textContent: "Ogni controllo è una chiamata a Odoo: per colonne che cambiano di rado bastano 15–30 minuti." }),
         el("div", { className: "acts" }, addBtn));
 
     const listBox = el("div", { className: "ps-notes" });
-    const ago = (t) => {
-      if (!t) return "non ancora controllato";
-      const m = Math.round((Date.now() - t) / 60000);
-      return m < 1 ? "controllato ora" : `controllato ${m} min fa`;
-    };
     function drawList() {
       const rules = load();
-      PS.fill(listBox, ...(rules.length ? rules.map((r) => {
-        const onBox = el("input", { type: "checkbox", checked: r.on, title: r.on ? "Sospendi" : "Riattiva" });
-        onBox.onchange = () => {
-          // riattivando riparte dalla situazione attuale: niente avvisi per ciò che è successo mentre era sospeso
-          mutate((all) => { const x = all.find((y) => y.id === r.id); if (x) { x.on = onBox.checked; x.seen = null; x.since = null; } });
-          drawList();
-          onCount?.();
-          if (onBox.checked) poll(r.id).catch(() => {});
-        };
-        const rowEvery = everySel();
-        rowEvery.className = "mini";
-        rowEvery.value = String(everyOf(r));
-        rowEvery.onchange = () => {
-          mutate((all) => { const x = all.find((y) => y.id === r.id); if (x) x.every = Number(rowEvery.value); });
-          drawList();
-        };
-        return el("div", { className: `ps-note${r.on ? "" : " done"}` },
-            onBox,
-            el("div", { className: "body" },
-                el("div", { className: "text", textContent: `${r.kind === "ticket" ? "🎫" : "📋"} ${r.name}` }),
-                el("div", { className: "meta" }, el("span", { textContent: `${describe(r)} · ${r.on ? ago(r.checked) : "sospeso"}` }))),
-            el("span", { className: "tools" },
-                rowEvery,
-                el("button", { type: "button", className: "icon del", textContent: "×", title: "Elimina l'avviso", onclick: async () => {
-                  if (!(await PS.ask(`Eliminare l'avviso "${r.name}"?`, { ok: "Elimina", danger: true }))) return;
-                  mutate((all) => { const i = all.findIndex((y) => y.id === r.id); if (i >= 0) all.splice(i, 1); });
-                  drawList();
-                  onCount?.();
-                } })));
-      }) : [el("p", { className: "hint", textContent: "Nessun avviso: creane uno qui sopra." })]));
+      PS.fill(listBox, ...(rules.length ? rules.map((r) => ruleRow(r, () => { drawList(); onCount?.(); }))
+        : [el("p", { className: "hint", textContent: "Nessun avviso: usa la 🔔 sull'intestazione di una colonna del kanban, oppure creane uno qui sopra." })]));
     }
 
     drawList();
@@ -376,5 +476,110 @@
         el("p", { className: "hint", textContent: "Ogni regola attiva si controlla con la frequenza scelta (cambiala dalla tendina accanto all'avviso): una scheda che entra nella colonna (creata o spostata lì) o un nuovo ticket fanno arrivare una notifica di Odoo, con il suono se attivo. Non avvisano le schede spostate da te né i ticket aperti da te. Serve una pagina di Odoo aperta." }));
   }
 
-  Object.assign(PS, { renderWatch, watchCount });
+  /* ---------- campanella 🔔 sull'intestazione di ogni colonna del kanban delle schede ---------- */
+  // many2one del record Owl: [id, nome] sia nel formato vecchio (array) sia nel nuovo ({ id, display_name })
+  const m2o = (v) => (Array.isArray(v) ? [v[0], v[1]] : v?.id ? [v.id, v.display_name] : null);
+  const sameText = (a, b) => String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+
+  // progetto della vista: dal contesto dell'azione, altrimenti se tutte le schede sono dello stesso progetto
+  function viewProject(records) {
+    const act = getEnv()?.services.action?.currentController?.action;
+    const ctx = act?.context || {};
+    const id = ctx.default_project_id || (ctx.active_model === "project.project" && ctx.active_id) || null;
+    let found = null;
+    for (const [, rec] of records) {
+      const p = m2o(rec.data?.project_id);
+      if (!p) continue;
+      if (id && p[0] === id) return p;
+      if (found && found[0] !== p[0]) { found = null; break; }
+      found ||= p;
+    }
+    return found || (id ? [id, `progetto #${id}`] : null);
+  }
+  // avvisi su questa colonna: stessa colonna (per nome) e progetto compatibile con la vista
+  const columnRules = (name, proj) => load().filter((r) => r.kind === "task" && sameText(r.stage?.[1], name)
+      && (!r.project || !proj || r.project[0] === proj[0]));
+
+  // chiamata da decorateColumns() per ogni colonna; records = tutte le schede della vista
+  function watchBell(g, name, records) {
+    const head = g.querySelector(".o_kanban_header_title") || g.querySelector(".o_kanban_header");
+    if (!head) return;
+    const viewModel = records[0]?.[1]?.resModel;
+    let b = head.querySelector(".ps-bellbtn");
+    if (viewModel && viewModel !== TASK) { b?.remove(); return; }  // solo kanban delle schede di progetto
+    if (!b) {
+      b = el("button", { type: "button", className: "ps-colbtn ps-bellbtn" });
+      b.innerHTML = PS.svg("bell");
+      b.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); openBellPop(g, b); });
+      PS.isolate(b);
+      const ref = head.querySelector(".ps-colbtn:not(.ps-bellbtn)") || head.querySelector(".o_kanban_config");
+      if (ref) ref.parentElement.insertBefore(b, ref); else head.append(b);
+    }
+    const n = columnRules(name, viewProject(records)).filter((r) => r.on).length;
+    b.classList.toggle("on", n > 0);
+    const t = n ? `Avvisi su "${name}": ${n} attiv${n === 1 ? "o" : "i"}` : `Avvisami quando arriva una scheda in "${name}"`;
+    if (b.title !== t) b.title = t;
+  }
+
+  let bellPop = null;
+  function openBellPop(g, btn) {
+    const name = PS.colName(g);
+    if (!name) return;
+    if (bellPop?.node.dataset.col === name) { bellPop.close(); return; }
+    bellPop?.close();
+    const p = PS.popover("ps-bellpop", { ignore: ".ps-bellbtn", onClose: () => { if (bellPop === p) bellPop = null; } });
+    bellPop = p;
+    p.node.dataset.col = name;
+
+    const records = PS.kanbanRecords();
+    const proj = viewProject(records);
+    const inCol = records.filter(([c]) => c.closest(".o_kanban_group") === g);
+    // US presenti nella colonna (e nella vista), per sceglierne una senza scriverla
+    const usList = [...new Map([...inCol, ...records].map(([, r]) => PS.usOf(r)).filter(Boolean)
+        .map((v) => [PS.usKey(v), v])).values()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    const hasSprint = records.some(([, r]) => r.data?.[SPRINT_FIELD]);
+
+    function draw() {
+      const projL = proj ? chk(`Solo ${proj[1]}`, true) : null;
+      const sprintSel = sprintSelect(hasSprint ? "cur" : "any");
+      const usSel = el("select", {}, el("option", { value: "", textContent: "Qualsiasi user story" }),
+          ...usList.map((v) => el("option", { value: v, textContent: v })));
+      const prio = taskPrioToggles();
+      const mineL = chk("Solo schede assegnate a me", false);
+      const everyIn = everySel();
+      const chat = chatFields();
+      const existing = columnRules(name, proj);
+      const addBtn = el("button", { type: "button", className: "primary", textContent: "Crea avviso", onclick: () => {
+        const r = newRule("task", Number(everyIn.value));
+        if (!chat.apply(r)) return;
+        Object.assign(r, { project: projL?.control.checked ? proj : null, stage: [null, name], sprint: sprintSel.value,
+          us: usSel.value.toUpperCase(), mine: mineL.control.checked, usField: PS.usFieldName?.() || null, prios: prio.value });
+        addRule(r);
+        draw();
+      } });
+      PS.fill(p.node,
+          el("h4", { textContent: `🔔 Avvisi · ${name}` }),
+          ...(existing.length ? existing.map((r) => ruleRow(r, draw))
+            : [el("p", { className: "hint", textContent: "Nessun avviso su questa colonna." })]),
+          el("h4", { className: "sep", textContent: existing.length ? "Aggiungi un altro avviso" : "Avvisami quando arriva una scheda qui" }),
+          el("p", { className: "hint", textContent: "Vale per le schede create in questa colonna o spostate qui da altri (non da te)." }),
+          projL,
+          el("label", { className: "lbl", textContent: "Sprint" }), sprintSel,
+          el("label", { className: "lbl", textContent: "User story" }), usSel,
+          el("label", { className: "lbl", textContent: "Priorità (più di una; nessuna = tutte)" }), prio.node,
+          mineL,
+          el("label", { className: "lbl", textContent: "Controlla" }), everyIn,
+          chat.node,
+          el("div", { className: "acts" }, addBtn,
+              el("button", { type: "button", textContent: "Tutti gli avvisi", title: "Pannello note → Avvisi automatici",
+                onclick: () => { p.close(); PS.openWatchTab?.(); } }),
+              el("button", { type: "button", textContent: "Chiudi", onclick: () => p.close() })));
+    }
+    draw();
+    const r = btn.getBoundingClientRect();
+    p.node.style.left = Math.max(8, Math.min(r.left - 20, innerWidth - p.node.offsetWidth - 8)) + "px";
+    p.node.style.top = Math.max(8, Math.min(r.bottom + 6, innerHeight - p.node.offsetHeight - 8)) + "px";
+  }
+
+  Object.assign(PS, { renderWatch, watchCount, watchBell });
 })();

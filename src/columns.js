@@ -409,6 +409,7 @@
       const recs = byGroup.get(g) || [];
       if (!recs.length && !g.querySelector(".o_kanban_record") && !byGroup.size) continue;
       decorateColumn(g, name, recs);
+      PS.watchBell?.(g, name, records);  // 🔔 avvisi automatici sulla colonna (watch.js)
     }
     equalizeHeads();
   }
@@ -416,7 +417,7 @@
   function ensureColBtn(g, name, active) {
     const head = g.querySelector(".o_kanban_header_title") || g.querySelector(".o_kanban_header");
     if (!head) return;
-    let b = head.querySelector(".ps-colbtn");
+    let b = head.querySelector(".ps-colbtn:not(.ps-bellbtn)");
     if (!b) {
       b = el("button", { type: "button", className: "ps-colbtn" });
       b.innerHTML = svg("filter");

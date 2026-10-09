@@ -9,9 +9,16 @@
   // dalla più recente alla più vecchia; "how" (facoltativo) dice dove trovare la funzione
   const CHANGELOG = [
     {
+      version: "1.23", date: "2026-10-09",
+      items: [
+        { title: "Campanella sulle colonne", text: "Clicca la 🔔 sull'intestazione di una colonna per essere avvisato quando ci arriva una nuova scheda: progetto, sprint e user story sono già proposti. Diventa colorata quando la colonna ha un avviso attivo.",
+          how: "🔔 sull'intestazione di ogni colonna del kanban delle schede" },
+      ],
+    },
+    {
       version: "1.22", date: "2026-10-09",
       items: [
-        { title: "Avvisi automatici", text: "Ricevi una notifica (con suono) quando arriva una nuova scheda in una colonna di un progetto, anche solo dello sprint corrente, di una user story o di certe priorità, oppure quando viene aperto un nuovo ticket. Scegli tu ogni quanto controllare.",
+        { title: "Avvisi automatici", text: "Ricevi una notifica (con suono) quando arriva una nuova scheda in una colonna di un progetto, anche solo dello sprint corrente, di una user story o di certe priorità, oppure quando viene aperto un nuovo ticket. Scegli tu ogni quanto controllare, e se vuoi l'avviso arriva anche in uno spazio di Google Chat.",
           how: "Pannello note 📄 → Avvisi automatici" },
       ],
     },

@@ -230,7 +230,7 @@ html[data-ps-headers][data-ps-headall] .o_action_manager .o_kanban_view .o_kanba
   background:var(--ps-head)!important;border-radius:0!important;margin-bottom:8px;
   box-shadow:calc(var(--ps-head-ext,8px) * -1) 0 0 var(--ps-head),var(--ps-head-ext,8px) 0 0 var(--ps-head)!important}
 html[data-ps-headall] .o_kanban_group>.o_kanban_header :is(.o_column_title,.o_kanban_counter,.o_kanban_counter_side,
-  .ps-colbtn,.o_kanban_config,.o_kanban_header_title,.o_kanban_quick_add,.ps-prio-dot,i,.fa){color:var(--ps-head-fg)!important}
+  .ps-colbtn:not(.on),.o_kanban_config,.o_kanban_header_title,.o_kanban_quick_add,.ps-prio-dot,i,.fa){color:var(--ps-head-fg)!important}
 html[data-ps-headall] .o_kanban_group>.o_kanban_header .ps-prio-dot:not(.on){background:color-mix(in srgb,var(--ps-head-fg) 16%,transparent)}
 /* liquid glass: fascia continua di vetro smerigliato. Il vetro è un ::before allargato negli spazi tra le colonne
    (box-shadow non sfoca lo sfondo); a destra si accorcia di 2px per non sovrapporsi al pezzo vicino (niente righe) */
@@ -248,7 +248,7 @@ html[data-ps-headglass][data-ps-glass] .o_action_manager .o_kanban_group:not(.o_
   backdrop-filter:none!important}
 html[data-ps-headglass] .o_kanban_group>.o_kanban_header :is(.o_column_title,.o_kanban_counter,.o_kanban_counter_side,
   .o_kanban_config,.o_kanban_header_title,.o_kanban_quick_add,.ps-prio-dot,i,.fa){text-shadow:0 1px 2px rgba(0,0,0,.55)}
-#ps-colpop .sw button.glass{border:1px solid rgba(255,255,255,.45);
+:is(#ps-colpop,#ps-bellpop) .sw button.glass{border:1px solid rgba(255,255,255,.45);
   background:linear-gradient(135deg,rgba(255,255,255,.7),rgba(255,255,255,.12) 55%,rgba(255,255,255,.4)),#5a6070;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.8)}
 /* senza colore, sopra un'immagine di sfondo: testo chiaro con alone scuro, leggibile su qualsiasi immagine */
@@ -276,52 +276,59 @@ html[data-ps-look] .o_kanban_view .o_kanban_group{border-radius:var(--ps-col-rad
 html[data-ps-shadow] .o_kanban_view .o_kanban_record{box-shadow:0 1px 2px #0007,0 0 0 1px #0002!important}
 html[data-ps-look] .ps-us{border-radius:max(3px,calc(var(--ps-radius) * .45))}
 
-.ps-colbtn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin:0 2px;
-  padding:0;border:0;border-radius:5px;background:transparent;color:inherit;opacity:.55;cursor:pointer;flex:none}
-.ps-colbtn:hover,.ps-colbtn.on{opacity:1}
-.ps-colbtn.on{background:#714b67;color:#fff!important}
-.ps-colbtn svg{width:14px;height:14px}
+/* pulsanti nell'intestazione della colonna (filtro, campanella): pastiglia leggera, icona piena e ben visibile */
+.ps-colbtn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;margin:0 2px;
+  padding:0;border:0;border-radius:6px;background:color-mix(in srgb,currentColor 12%,transparent);color:inherit;opacity:.9;
+  cursor:pointer;flex:none;transition:background-color .12s,opacity .12s}
+.ps-colbtn:hover{opacity:1;background:color-mix(in srgb,currentColor 24%,transparent)}
+.ps-colbtn svg{width:16px;height:16px;stroke-width:2.3}
+.ps-colbtn.on{opacity:1;background:#714b67;color:#fff!important}
+.ps-colbtn.ps-bellbtn.on{background:#F7CD1F;color:#1d2029!important}  /* campanella con avviso attivo: gialla */
 .ps-colbtn:focus-visible{outline:2px solid #017e84;opacity:1}
+/* sopra un'immagine di sfondo senza colore delle intestazioni: icona bianca con alone, pastiglia scura */
+html[data-ps-bg]:not([data-ps-headall]) .o_action_manager .o_kanban_header .ps-colbtn:not(.on){color:#fff!important;
+  background:rgba(18,20,28,.45);filter:drop-shadow(0 1px 1px rgba(0,0,0,.6))}
+html[data-ps-bg]:not([data-ps-headall]) .o_action_manager .o_kanban_header .ps-colbtn:not(.on):hover{background:rgba(18,20,28,.7)}
 
-#ps-colpop{position:fixed;z-index:10001;width:340px;max-width:calc(100vw - 16px);max-height:80vh;overflow-x:hidden;
+:is(#ps-colpop,#ps-bellpop){position:fixed;z-index:10001;width:340px;max-width:calc(100vw - 16px);max-height:80vh;overflow-x:hidden;
   overflow-y:auto;box-sizing:border-box;padding:12px;border-radius:10px;background:#262a36;color:#e6e6ea;
   box-shadow:0 4px 18px #000a;font:13px/1.4 system-ui,sans-serif;color-scheme:dark}
-#ps-colpop h4{margin:0 0 6px;font-size:14px;font-weight:600;color:#fff}
-#ps-colpop h4.sep{margin-top:14px;padding-top:10px;border-top:1px solid #3a3f4d}
-#ps-colpop .lbl{display:block;margin:10px 0 4px;color:#b8bac4}
-#ps-colpop select{width:100%;box-sizing:border-box;padding:6px;border-radius:6px;border:1px solid #4a5060;
+:is(#ps-colpop,#ps-bellpop) h4{margin:0 0 6px;font-size:14px;font-weight:600;color:#fff}
+:is(#ps-colpop,#ps-bellpop) h4.sep{margin-top:14px;padding-top:10px;border-top:1px solid #3a3f4d}
+:is(#ps-colpop,#ps-bellpop) .lbl{display:block;margin:10px 0 4px;color:#b8bac4}
+:is(#ps-colpop,#ps-bellpop) select{width:100%;box-sizing:border-box;padding:6px;border-radius:6px;border:1px solid #4a5060;
   background:#1d2029;color:#e6e6ea;font:inherit}
-#ps-colpop label.chk{display:flex;align-items:center;gap:8px;margin:2px 0;padding:3px 4px;border-radius:4px;cursor:pointer}
-#ps-colpop label.chk:hover{background:#3a3f4d}
-#ps-colpop label.chk input{margin:0}
-#ps-colpop .list.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:6px}
-#ps-colpop .inline{display:flex;align-items:flex-start;gap:8px}
-#ps-colpop .sw{display:grid;grid-template-columns:repeat(6,24px);gap:5px}
-#ps-colpop .sw button{width:24px;height:24px;padding:0;border:0;border-radius:5px;cursor:pointer}
-#ps-colpop .sw button.on{outline:2px solid #fff;outline-offset:1px}
-#ps-colpop .sw button.none{background:transparent;border:1px dashed #8d90a0;color:#b8bac4}
-#ps-colpop input[type=color]{width:40px;height:53px;padding:2px;border:1px solid #4a5060;border-radius:6px;
+:is(#ps-colpop,#ps-bellpop) label.chk{display:flex;align-items:center;gap:8px;margin:2px 0;padding:3px 4px;border-radius:4px;cursor:pointer}
+:is(#ps-colpop,#ps-bellpop) label.chk:hover{background:#3a3f4d}
+:is(#ps-colpop,#ps-bellpop) label.chk input{margin:0}
+:is(#ps-colpop,#ps-bellpop) .list.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:6px}
+:is(#ps-colpop,#ps-bellpop) .inline{display:flex;align-items:flex-start;gap:8px}
+:is(#ps-colpop,#ps-bellpop) .sw{display:grid;grid-template-columns:repeat(6,24px);gap:5px}
+:is(#ps-colpop,#ps-bellpop) .sw button{width:24px;height:24px;padding:0;border:0;border-radius:5px;cursor:pointer}
+:is(#ps-colpop,#ps-bellpop) .sw button.on{outline:2px solid #fff;outline-offset:1px}
+:is(#ps-colpop,#ps-bellpop) .sw button.none{background:transparent;border:1px dashed #8d90a0;color:#b8bac4}
+:is(#ps-colpop,#ps-bellpop) input[type=color]{width:40px;height:53px;padding:2px;border:1px solid #4a5060;border-radius:6px;
   background:#1d2029;cursor:pointer}
-#ps-colpop .hint{margin:4px 0 0;color:#8d90a0;font-size:12px}
-#ps-colpop .sub{margin:2px 0 8px 26px}
-#ps-colpop .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
-#ps-colpop .acts.tight{margin-top:6px}
-#ps-colpop .fl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
-#ps-colpop .fl.one{grid-template-columns:minmax(0,1fr);margin-top:6px}
-#ps-colpop .acts button{border:0;border-radius:6px;padding:7px 12px;background:#3a3f4d;color:#e6e6ea;
+:is(#ps-colpop,#ps-bellpop) .hint{margin:4px 0 0;color:#8d90a0;font-size:12px}
+:is(#ps-colpop,#ps-bellpop) .sub{margin:2px 0 8px 26px}
+:is(#ps-colpop,#ps-bellpop) .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+:is(#ps-colpop,#ps-bellpop) .acts.tight{margin-top:6px}
+:is(#ps-colpop,#ps-bellpop) .fl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
+:is(#ps-colpop,#ps-bellpop) .fl.one{grid-template-columns:minmax(0,1fr);margin-top:6px}
+:is(#ps-colpop,#ps-bellpop) .acts button{border:0;border-radius:6px;padding:7px 12px;background:#3a3f4d;color:#e6e6ea;
   font:inherit;cursor:pointer;white-space:nowrap}
-#ps-colpop .acts button:hover{background:#4a5060}
-#ps-colpop :focus-visible{outline:2px solid #017e84;outline-offset:1px}
-#ps-colpop .prio-edit{margin-top:8px;padding:8px;border-radius:8px;background:#1d2029}
-#ps-colpop .prio-row+.prio-row{margin-top:10px;padding-top:8px;border-top:1px solid #3a3f4d}
-#ps-colpop .prio-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-#ps-colpop .prio-head .pv{flex:none;pointer-events:none}
-#ps-colpop .prio-head input{flex:1;min-width:0;box-sizing:border-box;padding:5px 7px;border-radius:6px;
+:is(#ps-colpop,#ps-bellpop) .acts button:hover{background:#4a5060}
+:is(#ps-colpop,#ps-bellpop) :focus-visible{outline:2px solid #017e84;outline-offset:1px}
+:is(#ps-colpop,#ps-bellpop) .prio-edit{margin-top:8px;padding:8px;border-radius:8px;background:#1d2029}
+:is(#ps-colpop,#ps-bellpop) .prio-row+.prio-row{margin-top:10px;padding-top:8px;border-top:1px solid #3a3f4d}
+:is(#ps-colpop,#ps-bellpop) .prio-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+:is(#ps-colpop,#ps-bellpop) .prio-head .pv{flex:none;pointer-events:none}
+:is(#ps-colpop,#ps-bellpop) .prio-head input{flex:1;min-width:0;box-sizing:border-box;padding:5px 7px;border-radius:6px;
   border:1px solid #4a5060;background:#262a36;color:#e6e6ea;font:inherit}
-#ps-colpop .prio-row .sw button.taken{opacity:.3}
-#ps-colpop .prio-row .sw button.taken:hover{opacity:.7}
-#ps-colpop .prio-row .sw button.main{display:grid;place-items:center}
-#ps-colpop .prio-row .sw button.main::after{content:"";width:8px;height:8px;border-radius:50%;background:#fff;
+:is(#ps-colpop,#ps-bellpop) .prio-row .sw button.taken{opacity:.3}
+:is(#ps-colpop,#ps-bellpop) .prio-row .sw button.taken:hover{opacity:.7}
+:is(#ps-colpop,#ps-bellpop) .prio-row .sw button.main{display:grid;place-items:center}
+:is(#ps-colpop,#ps-bellpop) .prio-row .sw button.main::after{content:"";width:8px;height:8px;border-radius:50%;background:#fff;
   box-shadow:0 0 0 1px #0007}
 
 /* ---------- Ricerca rapida ---------- */
@@ -491,3 +498,13 @@ html[data-ps-look] .ps-us{border-radius:max(3px,calc(var(--ps-radius) * .45))}
 #ps-panel details.news-all details.news-old{margin:4px 0 0}
 #ps-panel details.news-all details.news-old summary{padding:6px 10px;font-size:12.5px}
 #ps-panel .ps-prio-pick{display:flex;flex-wrap:wrap;gap:6px}
+#ps-panel .ps-chat{margin-top:6px;padding:8px;border-radius:6px;background:#1d2029}
+
+/* popover della campanella: campi di testo e tendine piccole come nel pannello */
+#ps-bellpop input:not([type=checkbox]){width:100%;box-sizing:border-box;padding:6px;border-radius:6px;border:1px solid #4a5060;
+  background:#1d2029;color:#e6e6ea;font:inherit}
+#ps-bellpop .inline input{flex:1;min-width:0}
+#ps-bellpop select.mini{width:auto;padding:3px 4px;font-size:12px}
+#ps-bellpop .ps-note .icon{border:0;cursor:pointer}
+#ps-bellpop button.primary{background:#714b67!important;color:#fff!important}
+#ps-bellpop .ps-chat button{flex:none;border:0;border-radius:6px;padding:6px 10px;background:#3a3f4d;color:#e6e6ea;cursor:pointer}
