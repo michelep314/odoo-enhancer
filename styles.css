@@ -61,7 +61,26 @@
 #ps-panel .ps-combo-list .grp{padding:6px 8px 2px;color:#8d90a0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
 #ps-panel .ps-combo-list .empty{padding:6px 8px;color:#8d90a0}
 #ps-panel .days{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-#ps-panel .days span{padding:2px 7px;border-radius:4px;background:#1d2029;font-size:12px}
+/* anteprima fogli ore: un chip per giorno, × per escluderlo (escluso = barrato, + per rimetterlo) */
+#ps-panel .days .ps-day{display:inline-flex;align-items:center;gap:6px;padding:2px 4px 2px 8px;border-radius:5px;
+  background:#1d2029;color:#e6e6ea;font-size:12px}
+#ps-panel .days .ps-day .x{display:grid;place-items:center;width:16px;height:16px;border-radius:50%;color:#8d90a0;font-size:12px;line-height:1}
+#ps-panel .days .ps-day:hover{background:#2f3442;color:#fff}
+#ps-panel .days .ps-day:hover .x{background:#c0392b;color:#fff}
+#ps-panel .days .ps-day.off{opacity:.5}
+#ps-panel .days .ps-day.off span:first-child{text-decoration:line-through}
+#ps-panel .days .ps-day.off:hover .x{background:#30C381;color:#1d2029}
+/* copia un giorno: righe del giorno di origine da spuntare */
+#ps-panel .ps-ts-src{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+#ps-panel .ps-ts-line{display:flex;align-items:center;gap:8px;margin:0;padding:6px 8px;border-radius:6px;background:#1d2029;
+  color:#e6e6ea;cursor:pointer}
+#ps-panel .ps-ts-line input{width:auto;margin:0;flex:none;accent-color:#714b67}
+#ps-panel .ps-ts-line .what{flex:1;min-width:0;display:flex;flex-direction:column}
+#ps-panel .ps-ts-line strong,#ps-panel .ps-ts-line small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ps-panel .ps-ts-line strong{font-weight:500}
+#ps-panel .ps-ts-line small{color:#8d90a0;font-size:11px}
+#ps-panel .ps-ts-line .h{flex:none;color:#b8bac4;font-variant-numeric:tabular-nums}
+#ps-panel .ps-ts-line.off{opacity:.5}
 #ps-panel .warn{margin:6px 0 0;color:#e5a55d;font-size:12px}
 
 /* ---------- Modifica rapida ---------- */
@@ -464,3 +483,4 @@ html[data-ps-look] .ps-us{border-radius:max(3px,calc(var(--ps-radius) * .45))}
 @keyframes ps-dlg-in{from{opacity:0}}
 @keyframes ps-dlg-box{from{opacity:0;transform:translateY(6px) scale(.98)}}
 @media (prefers-reduced-motion:reduce){#ps-dialog,#ps-dialog .box{animation:none}}
+#ps-panel [hidden]{display:none!important}

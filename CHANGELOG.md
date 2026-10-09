@@ -6,6 +6,11 @@ Tutte le modifiche rilevanti di Odoo Enhancer. Il formato segue [Keep a Changelo
 
 ## [1.20] - 2026-10-09
 
+### Aggiunto
+- Fogli ore, **copia un giorno**: in cima al pannello si sceglie tra "Una riga" e "Copia un giorno". Nella seconda modalità si sceglie il giorno di origine, le sue righe (progetto, attività, descrizione, ore) vengono lette da Odoo e si spuntano quelle da copiare; vengono create in ogni giorno dell'intervallo "Giorni", con le stesse regole per saltare weekend, festivi, ferie e giorni già compilati. Il giorno di origine non si ricopia su se stesso.
+- Fogli ore, **giorni esclusi a mano**: nell'anteprima ogni giorno ha una ×; un clic lo esclude (barrato, non viene compilato), un altro clic lo rimette. Conteggi e pulsante "Crea" si aggiornano.
+- Fogli ore, **modifica di una riga salvata**: scelta una riga salvata compare "Aggiorna riga salvata", che la sovrascrive con progetto, attività, descrizione e ore attuali e permette di cambiarle il nome. L'altro pulsante diventa "Salva come nuova riga predefinita".
+
 ### Modificato
 - **Finestre di dialogo interne** al posto di `alert`, `confirm` e `prompt` del browser (riquadro "…dice" in cima alla pagina): stesse domande e avvisi, ma in una finestra nello stile dei pannelli, al centro dello schermo. Invio conferma, Esc o clic sullo sfondo annullano; le azioni distruttive (elimina, archivia, ripristina) hanno il pulsante rosso con il verbo dell'azione. Le finestre aperte da un pannello o da un popover non li chiudono. Il testo da copiare a mano (link, configurazione) compare in un campo già selezionato. API in `core.js`: `PS.say`, `PS.ask`, `PS.askText`, `PS.showText`.
 

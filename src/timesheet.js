@@ -1,4 +1,4 @@
-/* Pannello "Fogli ore": crea righe ripetute su un intervallo di giorni */
+/* Pannello "Fogli ore": crea righe ripetute su un intervallo di giorni (da una riga o copiando un giorno) */
 (() => {
   "use strict";
   const PS = window.__ps;
@@ -156,7 +156,7 @@
         const t = templates[tplSel.value];
         if (!t || !(await PS.ask(`Eliminare la riga salvata "${t.label}"?`, { ok: "Elimina", danger: true }))) return;
         const i = templates.indexOf(t);
-        if (i >= 0) { templates.splice(i, 1); tsSave(); fillTpl(); }
+        if (i >= 0) { templates.splice(i, 1); tsSave(); fillTpl(); updTpl.hidden = true; }
       },
     });
     const projSel = projectPicker(projects, (p) => { invalidate(); loadTasks(p?.id || null).catch(fail); });
@@ -176,6 +176,7 @@
     }
     tplSel.onchange = () => {
       const t = templates[tplSel.value];
+      updTpl.hidden = !t;
       if (!t) return;
       projSel.set(projects.find((p) => p.id === t.project[0]) || { id: t.project[0], display_name: t.project[1] });
       descIn.value = t.name || "";
@@ -196,8 +197,28 @@
         hours,
       };
     }
+    // aggiorna la riga salvata scelta con i campi attuali (anche il nome)
+    const updTpl = el("button", {
+      textContent: "Aggiorna riga salvata", hidden: true,
+      onclick: async () => {
+        const t = templates[tplSel.value];
+        if (!t) return;
+        try {
+          const r = currentRow();
+          const label = await PS.askText(`Aggiornare "${t.label}" con progetto, attività, descrizione e ore attuali?\n\nNome della riga:`,
+              t.label, { ok: "Aggiorna" });
+          if (!label?.trim()) return;
+          const i = templates.indexOf(t);
+          if (i < 0) return;
+          templates[i] = { label: label.trim(), ...r };
+          tsSave(); fillTpl();
+          tplSel.value = String(i);
+          PS.getEnv()?.services.notification?.add(`Riga "${label.trim()}" aggiornata.`, { type: "success" });
+        } catch (e) { PS.say("Impossibile aggiornare: " + e.message); }
+      },
+    });
     const saveTpl = el("button", {
-      textContent: "Salva come riga predefinita",
+      textContent: "Salva come nuova riga predefinita",
       onclick: async () => {
         try {
           const r = currentRow();
@@ -206,9 +227,56 @@
           templates.push({ label: label.trim(), ...r });
           tsSave(); fillTpl();
           tplSel.value = String(templates.length - 1);
+          updTpl.hidden = false;
         } catch (e) { PS.say("Impossibile salvare: " + e.message); }
       },
     });
+
+    /* copia un giorno: le righe di un giorno già compilato, da replicare nei giorni scelti */
+    let mode = "row";  // "row" = la riga qui sopra, "copy" = le righe di un giorno
+    let srcLines = [], srcSeq = 0;
+    const srcIn = el("input", { type: "date", value: iso(new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()))) });
+    const srcBox = el("div", { className: "ps-ts-src" });
+    async function loadSource() {
+      const my = ++srcSeq;
+      srcLines = [];
+      if (!srcIn.value) { PS.fill(srcBox, el("p", { className: "hint", textContent: "Scegli il giorno da copiare." })); return; }
+      PS.fill(srcBox, el("p", { className: "hint", textContent: "Leggo le righe…" }));
+      const lines = await orm.searchRead(TS_MODEL, [
+        ["user_id", "=", evalCtx(env).uid], ["project_id", "!=", false], ["date", "=", srcIn.value],
+      ], ["project_id", "task_id", "name", "unit_amount"], { order: "id" });
+      if (my !== srcSeq) return;
+      srcLines = lines.map((l) => ({ on: true, project: l.project_id, task: l.task_id || null,
+        name: l.name && l.name !== "/" ? l.name : "", hours: l.unit_amount }));
+      drawSource();
+    }
+    function drawSource() {
+      if (!srcLines.length) {
+        PS.fill(srcBox, el("p", { className: "hint", textContent: `Nessuna riga il ${fmtDay(srcIn.value)}.` }));
+        return;
+      }
+      const tot = srcLines.filter((l) => l.on).reduce((a, l) => a + l.hours, 0);
+      PS.fill(srcBox,
+          ...srcLines.map((l) => {
+            const c = el("input", { type: "checkbox", checked: l.on });
+            c.onchange = () => { l.on = c.checked; invalidate(); drawSource(); };
+            return el("label", { className: `ps-ts-line${l.on ? "" : " off"}` }, c,
+                el("span", { className: "what" },
+                    el("strong", { textContent: l.task?.[1] || l.project[1] }),
+                    el("small", { textContent: [l.task ? l.project[1] : null, l.name].filter(Boolean).join(" · ") })),
+                el("span", { className: "h", textContent: `${fmtHours(l.hours)} h` }));
+          }),
+          el("p", { className: "hint", textContent: `Da copiare: ${fmtHours(tot)} h al giorno.` }));
+    }
+    srcIn.addEventListener("change", () => { invalidate(); loadSource().catch(fail); });
+
+    // righe da creare in ogni giorno, secondo la modalità
+    function dayRows() {
+      if (mode === "row") return [currentRow()];
+      const rows = srcLines.filter((l) => l.on);
+      if (!rows.length) throw new Error(srcLines.length ? "spunta almeno una riga da copiare" : "nel giorno scelto non ci sono righe da copiare");
+      return rows;
+    }
 
     /* giorni */
     const now = new Date();
@@ -226,32 +294,60 @@
 
     const preview = el("div");
     const createBtn = el("button", { className: "primary", textContent: "Crea righe", disabled: true });
-    let plan = null, row = null, lastIds = null;
+    let plan = null, rows = null, lastIds = null;
+    let excluded = new Set();  // giorni tolti a mano dall'anteprima (clic sulla ×)
 
-    const invalidate = () => { plan = null; createBtn.disabled = true; createBtn.textContent = "Crea righe"; };
+    const invalidate = () => { plan = null; excluded = new Set(); createBtn.disabled = true; createBtn.textContent = "Crea righe"; };
+    const activeDays = () => (plan ? plan.todo.filter((d) => !excluded.has(d)) : []);
+
+    // anteprima: un chip per giorno con la × per escluderlo (di nuovo clic per rimetterlo)
+    function drawPreview() {
+      const days = activeDays(), perDay = rows.reduce((a, r) => a + r.hours, 0), n = days.length * rows.length;
+      const s = plan.skipped;
+      const skippedTxt = [[s.weekend, "weekend"], [s.holiday, "festivi"], [s.leave, "ferie"], [s.filled, "già compilati"],
+        [s.source, "giorno copiato"], [[...excluded], "esclusi a mano"]]
+          .filter(([a]) => a.length).map(([a, t]) => `${a.length} ${t}`).join(", ");
+      const what = rows.length === 1 ? `${righe(n)} da ${fmtHours(perDay)} h`
+        : `${days.length} ${days.length === 1 ? "giorno" : "giorni"} × ${righe(rows.length)} = ${righe(n)}`;
+      PS.fill(preview,
+          el("p", { className: "hint", textContent: `${what}, totale ${fmtHours(perDay * days.length)} h.` +
+                (skippedTxt ? ` Saltati: ${skippedTxt}.` : "") }),
+          plan.leaveError ? el("p", { className: "warn", textContent: "Ferie non verificate: " + plan.leaveError }) : null,
+          el("div", { className: "days" }, ...plan.todo.map((d) => {
+            const off = excluded.has(d);
+            const b = el("button", { type: "button", className: `ps-day${off ? " off" : ""}`,
+              title: off ? "Clic per rimetterlo" : "Clic per escludere questo giorno",
+              onclick: () => {
+                if (!plan) return;  // anteprima superata da una modifica: va rifatta
+                if (off) excluded.delete(d); else excluded.add(d);
+                drawPreview();
+              } },
+                el("span", { textContent: fmtDay(d) }), el("span", { className: "x", textContent: off ? "+" : "×" }));
+            b.setAttribute("aria-pressed", String(!off));
+            return b;
+          })),
+          days.length < plan.todo.length ? null
+            : el("p", { className: "hint", textContent: "Clic sulla × di un giorno per escluderlo." }));
+      createBtn.disabled = !n;
+      createBtn.textContent = n ? `Crea ${righe(n)}` : "Nessun giorno da compilare";
+    }
 
     const previewBtn = el("button", {
       textContent: "Anteprima",
       onclick: async () => {
         try {
-          row = currentRow();
+          rows = dayRows();
           if (!fromIn.value || !toIn.value || fromIn.value > toIn.value) throw new Error("intervallo di date non valido");
           plan = await planDays(env, {
             from: fromIn.value, to: toIn.value,
             skipWeekend: wkL.control.checked, skipHolidays: hoL.control.checked,
             skipLeaves: lvL.control.checked, skipFilled: flL.control.checked,
           });
-          const s = plan.skipped;
-          const skippedTxt = [[s.weekend, "weekend"], [s.holiday, "festivi"], [s.leave, "ferie"], [s.filled, "già compilati"]]
-              .filter(([a]) => a.length).map(([a, t]) => `${a.length} ${t}`).join(", ");
-          PS.fill(preview,
-              el("p", { className: "hint", textContent:
-                    `${righe(plan.todo.length)} da ${fmtHours(row.hours)} h, totale ${fmtHours(row.hours * plan.todo.length)} h.` +
-                    (skippedTxt ? ` Saltati: ${skippedTxt}.` : "") }),
-              plan.leaveError ? el("p", { className: "warn", textContent: "Ferie non verificate: " + plan.leaveError }) : null,
-              el("div", { className: "days" }, ...plan.todo.map((d) => el("span", { textContent: fmtDay(d) }))));
-          createBtn.disabled = !plan.todo.length;
-          createBtn.textContent = plan.todo.length ? `Crea ${righe(plan.todo.length)}` : "Nessun giorno da compilare";
+          // copiando, il giorno di origine non si ricopia su se stesso
+          plan.skipped.source = mode === "copy" ? plan.todo.filter((d) => d === srcIn.value) : [];
+          if (mode === "copy") plan.todo = plan.todo.filter((d) => d !== srcIn.value);
+          excluded = new Set();
+          drawPreview();
         } catch (e) {
           invalidate();
           PS.say("Anteprima non riuscita: " + (e?.data?.message || e.message));
@@ -274,17 +370,19 @@
     }
 
     createBtn.onclick = async () => {
-      if (!plan?.todo.length || !row) return;
-      if (!(await PS.ask(`Creare ${righe(plan.todo.length)} di foglio ore?`, { ok: "Crea" }))) return;
+      const days = activeDays();
+      if (!days.length || !rows?.length) return;
+      const n = days.length * rows.length;
+      if (!(await PS.ask(`Creare ${righe(n)} di foglio ore?`, { ok: "Crea" }))) return;
       createBtn.disabled = true;
       try {
-        lastIds = await orm.create(TS_MODEL, plan.todo.map((date) => ({
+        lastIds = await orm.create(TS_MODEL, days.flatMap((date) => rows.map((r) => ({
           date,
-          project_id: row.project[0],
-          task_id: row.task?.[0] || false,
-          name: row.name || "/",
-          unit_amount: row.hours,
-        })));
+          project_id: r.project[0],
+          task_id: r.task?.[0] || false,
+          name: r.name || "/",
+          unit_amount: r.hours,
+        }))));
         PS.fill(preview,
             el("p", { className: "hint", textContent: lastIds.length === 1 ? "Creata 1 riga." : `Create ${lastIds.length} righe.` }),
             el("div", { className: "acts" }, el("button", { textContent: "Annulla inserimento", onclick: undo })));
@@ -293,14 +391,39 @@
       } catch (e) { fail(e); createBtn.disabled = false; }
     };
 
-    PS.fill(panel,
-        el("h4", { textContent: "Fogli ore" }),
+    const rowPart = el("div", {},
         el("label", { textContent: "Riga salvata" }), el("div", { className: "inline" }, tplSel, delTpl),
         el("label", { textContent: "Progetto" }), projSel.node,
         el("label", { textContent: "Attività" }), taskSel,
         el("label", { textContent: "Descrizione" }), descIn,
         el("label", { textContent: "Ore al giorno" }), hoursIn,
-        el("div", { className: "acts" }, saveTpl),
+        el("div", { className: "acts" }, updTpl, saveTpl));
+    const copyPart = el("div", { hidden: true },
+        el("label", { textContent: "Giorno da copiare" }), srcIn,
+        srcBox,
+        el("p", { className: "hint", textContent: "Le righe spuntate vengono copiate in ogni giorno scelto qui sotto." }));
+    const seg = el("div", { className: "ps-seg" });
+    function drawSeg() {
+      PS.fill(seg, ...[["row", "Una riga"], ["copy", "Copia un giorno"]].map(([k, label]) => el("button", {
+        type: "button", className: k === mode ? "on" : "", textContent: label,
+        onclick: () => {
+          if (mode === k) return;
+          mode = k;
+          rowPart.hidden = k !== "row";
+          copyPart.hidden = k !== "copy";
+          invalidate();
+          PS.fill(preview);
+          drawSeg();
+          if (k === "copy" && !srcLines.length) loadSource().catch(fail);
+        } })));
+    }
+    drawSeg();
+
+    PS.fill(panel,
+        el("h4", { textContent: "Fogli ore" }),
+        seg,
+        rowPart,
+        copyPart,
         el("h4", { className: "sep", textContent: "Giorni" }),
         el("div", { className: "two" },
             el("div", {}, el("label", { textContent: "Dal" }), fromIn),
