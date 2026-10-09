@@ -17,22 +17,36 @@
     PS.renderBar();  // toglie il pallino dal pulsante ✨
   }
 
-  const fmtDate = (d) => new Date(d + "T00:00:00").toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" });
-  const heading = (v) => v.label || `Versione ${v.version}${v.date ? " · " + fmtDate(v.date) : ""}`;
+  // solo il numero di versione: le date restano in changelog.js ma non si mostrano
+  const heading = (v) => v.label || `Versione ${v.version}`;
   const itemNode = (it) => el("div", { className: "news-item" },
       el("strong", { textContent: it.title }),
       el("p", { textContent: it.text }),
       it.how ? el("p", { className: "hint", textContent: "Dove: " + it.how }) : null);
 
+  // "1.9" < "1.12" < "1.20": confronto numerico parte per parte
+  const cmpVer = (a, b) => {
+    const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
+    for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0);
+    return 0;
+  };
+
+  // L'ultima versione è sempre aperta; restano aperte anche quelle non ancora lette (più recenti dell'ultima vista).
+  // Le versioni già lette sono compattate in "Versioni precedenti", ognuna richiudibile.
   function renderNews(panel) {
     const [cur, ...old] = CHANGELOG;
+    const seen = state.seen;  // prima di markSeen()
+    const unread = seen ? old.filter((v) => cmpVer(v.version, seen) > 0) : [];
+    const read = old.filter((v) => !unread.includes(v));
     PS.fill(panel,
         el("h4", { textContent: `Novità di Odoo Enhancer · versione ${VERSION}` }),
-        cur.date ? el("p", { className: "hint", textContent: fmtDate(cur.date) }) : null,
         ...cur.items.map(itemNode),
-        old.length ? el("h4", { className: "sep", textContent: "Versioni precedenti" }) : null,
-        ...old.map((v) => el("details", { className: "news-old" },
-            el("summary", { textContent: heading(v) }), ...v.items.map(itemNode))),
+        ...unread.flatMap((v) => [el("h4", { className: "sep", textContent: `${heading(v)} · non ancora letta` }), ...v.items.map(itemNode)]),
+        read.length ? el("details", { className: "news-old news-all" },
+            el("summary", { textContent: `Versioni precedenti (${read.length})` }),
+            ...read.map((v) => el("details", { className: "news-old" },
+                el("summary", { textContent: `${heading(v)} · ${v.items.length} novità` }),
+                ...v.items.map(itemNode)))) : null,
         el("div", { className: "acts" }, el("button", { textContent: "Chiudi", onclick: () => PS.togglePanel("news") })));
     markSeen();
   }

@@ -9,7 +9,7 @@
   // dalla più recente alla più vecchia; "how" (facoltativo) dice dove trovare la funzione
   const CHANGELOG = [
     {
-      version: "1.20", date: "2026-10-09",
+      version: "1.21", date: "2026-10-09",
       items: [
         { title: "Copia un giorno nei fogli ore", text: "Scegli un giorno già compilato e copia le sue righe (tutte o solo alcune) negli altri giorni, saltando weekend, festivi e ferie.",
           how: "Pannello Fogli ore → Copia un giorno" },
@@ -17,6 +17,11 @@
           how: "Pannello Fogli ore → Anteprima" },
         { title: "Modifica una riga salvata", text: "Scegli la riga salvata, cambia i campi e premi \"Aggiorna riga salvata\": puoi anche rinominarla.",
           how: "Pannello Fogli ore → Riga salvata" },
+      ],
+    },
+    {
+      version: "1.20", date: "2026-10-09",
+      items: [
         { title: "Finestre più pulite", text: "Conferme, avvisi e richieste di testo non usano più il riquadro grigio del browser: compaiono in una finestra al centro, nello stile dell'estensione. Invio conferma, Esc annulla." },
       ],
     },

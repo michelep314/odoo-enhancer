@@ -484,3 +484,9 @@ html[data-ps-look] .ps-us{border-radius:max(3px,calc(var(--ps-radius) * .45))}
 @keyframes ps-dlg-box{from{opacity:0;transform:translateY(6px) scale(.98)}}
 @media (prefers-reduced-motion:reduce){#ps-dialog,#ps-dialog .box{animation:none}}
 #ps-panel [hidden]{display:none!important}
+/* novità: versioni già lette raccolte in un solo blocco richiudibile */
+#ps-panel details.news-all{margin-top:14px;background:transparent}
+#ps-panel details.news-all>summary{padding:7px 0;color:#b8bac4;font-weight:600}
+#ps-panel details.news-all[open]{padding-bottom:0}
+#ps-panel details.news-all details.news-old{margin:4px 0 0}
+#ps-panel details.news-all details.news-old summary{padding:6px 10px;font-size:12.5px}
