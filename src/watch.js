@@ -15,7 +15,7 @@
   const MAX_IDS = 2000;  // schede ricordate per regola (le più recenti)
 
   // regola = { id, kind: "task" | "ticket", on, name, every (minuti tra un controllo e l'altro),
-  //   task:   project: [id, nome] | null, stage: [id, nome] | null, sprint: "any" | "cur" | "curprev", us, mine,
+  //   task:   project: [id, nome] | null, stage: [_, nome colonna] | null (si confronta il nome), sprint: "any" | "cur" | "curprev", us, mine,
   //           prios: ["high", "medium", …] (priorità dell'estensione, dal colore; vuoto = tutte)
   //   ticket: team: [id, nome] | null, unassigned, tprios: ["2", "3", …] (campo priority del ticket; vuoto = tutte)
   //   stato:  seen: [id] (schede già nella colonna) | null, since: "AAAA-MM-GG HH:MM:SS" (ultimo ticket visto) | null }
@@ -73,7 +73,8 @@
   async function taskDomain(orm, r) {
     const dom = [];
     if (r.project) dom.push(["project_id", "=", r.project[0]]);
-    if (r.stage) dom.push(["stage_id", "=", r.stage[0]]);
+    // colonna per nome: ogni sprint ha le sue colonne con gli stessi nomi, così la regola vale anche per i prossimi
+    if (r.stage) dom.push(["stage_id.name", "=", r.stage[1]]);
     if (r.sprint !== "any") {
       const [cur, prev] = await sprints(orm);
       const ok = (r.sprint === "curprev" ? [cur, prev] : [cur]).filter((v) => v != null);
@@ -196,7 +197,7 @@
     const nameIn = el("input", { placeholder: "Nome dell'avviso (facoltativo)" });
     // progetto: campo con ricerca come nei fogli ore (Omnibus in cima, poi "Progetto…"); vuoto = tutti
     const projSel = PS.projectPicker([], () => loadStages().catch(fail), { placeholder: "Tutti i progetti (scrivi per cercare)" });
-    const stageSel = el("select", { disabled: true }, el("option", { value: "", textContent: "Qualsiasi colonna" }));
+    const stageSel = el("select", {}, el("option", { value: "", textContent: "Qualsiasi colonna" }));
     const sprintSel = el("select", {},
         el("option", { value: "any", textContent: "Qualsiasi sprint" }),
         el("option", { value: "cur", textContent: "Sprint corrente" }),
@@ -242,19 +243,42 @@
         .then((rows) => projSel.setProjects(rows)).catch(() => {});
     orm?.searchRead("helpdesk.team", [], ["name"], { order: "name" })
         .then((rows) => teamSel.append(...rows.map(opt))).catch(() => { teamsOk = false; });
+    // Colonne: solo quelle in cui ci sono schede dello sprint (e del progetto) scelti, una per nome.
+    // Le colonne hanno lo stesso nome in ogni sprint: l'avviso le riconosce per nome, non per id.
+    // Senza sprint né progetto: le colonne delle schede che hanno uno sprint.
+    let stageSeq = 0;
     async function loadStages() {
-      PS.fill(stageSel, el("option", { value: "", textContent: "Qualsiasi colonna" }));
-      const p = projSel.value;
-      stageSel.disabled = !p;
-      if (!p) return;
-      const rows = await orm.searchRead("project.task.type", [["project_ids", "in", [p.id]]], ["name"], { order: "sequence, id" });
-      if (projSel.value?.id === p.id) stageSel.append(...rows.map(opt));  // risposta ancora valida
+      const my = ++stageSeq;
+      const p = projSel.value, sprint = sprintSel.value, keep = stageSel.value;
+      const taskDom = [];
+      if (p) taskDom.push(["project_id", "=", p.id]);
+      if (sprint !== "any") {
+        const [cur, prev] = await sprints(orm);
+        const vals = (sprint === "curprev" ? [cur, prev] : [cur]).filter((v) => v != null);
+        taskDom.push([SPRINT_FIELD, "in", vals.length ? vals : [-1]]);
+      } else if (!p) {
+        taskDom.push([SPRINT_FIELD, "!=", false]);
+      }
+      PS.fill(stageSel, el("option", { value: "", textContent: "Carico le colonne…" }));
+      const used = await orm.searchRead(TASK, taskDom, ["stage_id"], { limit: 5000, order: "id desc" }).catch(() => []);
+      const ids = [...new Set(used.map((t) => t.stage_id?.[0]).filter(Boolean))];
+      const stages = ids.length
+        ? await orm.searchRead("project.task.type", [["id", "in", ids]], ["name"], { order: "sequence, id" }).catch(() => [])
+        : [];
+      if (my !== stageSeq) return;  // nel frattempo sono cambiati progetto o sprint
+      const names = [...new Set(stages.map((x) => x.name))];  // ordine del kanban, un nome una volta sola
+      PS.fill(stageSel,
+          el("option", { value: "", textContent: names.length ? "Qualsiasi colonna" : "Qualsiasi colonna (nessuna scheda trovata)" }),
+          ...names.map((n) => el("option", { value: n, textContent: n })));
+      stageSel.value = names.includes(keep) ? keep : "";
     }
+    sprintSel.addEventListener("change", () => loadStages().catch(fail));
+    loadStages().catch((e) => console.warn("[pulsantiera] colonne degli avvisi:", e));
 
     const taskPart = el("div", {},
         el("label", { textContent: "Progetto" }), projSel.node,
-        el("label", { textContent: "Colonna" }), stageSel,
         el("label", { textContent: "Sprint" }), sprintSel,
+        el("label", { textContent: "Colonna" }), stageSel,  // dopo lo sprint: le colonne in cima dipendono da lui
         el("label", { textContent: "User story" }), usIn,
         el("label", { textContent: "Priorità (più di una; nessuna = tutte)" }), taskPrio.node,
         mineL);
@@ -277,7 +301,7 @@
       if (kind === "ticket" && !teamsOk) return PS.say("Helpdesk non disponibile: modulo assente o senza accesso ai ticket.");
       const r = { id: `w${Date.now().toString(36)}`, kind, on: true, every: Number(everyIn.value), seen: null, since: null };
       if (kind === "task") {
-        Object.assign(r, { project: projSel.value ? [projSel.value.id, projSel.value.display_name] : null, stage: selected(stageSel), sprint: sprintSel.value,
+        Object.assign(r, { project: projSel.value ? [projSel.value.id, projSel.value.display_name] : null, stage: stageSel.value ? [null, stageSel.value] : null, sprint: sprintSel.value,
           us: usIn.value.trim().toUpperCase(), mine: mineL.control.checked, usField: PS.usFieldName?.() || null,
           prios: taskPrio.value });
         if (!r.project && !r.stage && r.sprint === "any" && !r.us && !r.mine && !r.prios.length &&
