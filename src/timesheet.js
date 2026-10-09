@@ -71,16 +71,23 @@
     return { todo, skipped, leaveError };
   }
 
-  // ricerca dei progetti: tutte le parole, senza accenti; in cima quelli che iniziano con "progetto"
+  // ricerca dei progetti: tutte le parole, senza accenti. Primo esattamente "Progetto Omnibus",
+  // poi quelli che iniziano con "Progetto"/"Progetti", poi gli altri (ognuno in ordine alfabetico)
+  const FIRST_PROJECT = "progetto omnibus";
   const norm = (s) => String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const projRank = (p) => (norm(p.display_name).startsWith("progetto") ? 0 : 1);
+  const projRank = (p) => {
+    const n = norm(p.display_name).trim().replace(/\s+/g, " ");
+    return n === FIRST_PROJECT ? 0 : /^progett[oi]\b/.test(n) ? 1 : 2;
+  };
+  const sortProjects = (list) => [...list].sort((a, b) => projRank(a) - projRank(b));  // stabile: resta l'ordine per nome
   const MAX_OPTS = 200;
 
-  // campo con ricerca e elenco a discesa (frecce, Invio, Esc); onPick(progetto | null)
-  function projectPicker(projects, onPick) {
-    const sorted = [...projects].sort((a, b) => projRank(a) - projRank(b));  // stabile: resta l'ordine per nome
+  // campo con ricerca e elenco a discesa (frecce, Invio, Esc); onPick(progetto | null).
+  // Usato anche dagli avvisi automatici (PS.projectPicker); setProjects() per un elenco caricato dopo
+  function projectPicker(projects, onPick, { placeholder = "Cerca un progetto…" } = {}) {
+    let sorted = sortProjects(projects);
     let cur = null, items = [], active = -1;
-    const input = el("input", { placeholder: "Cerca un progetto…", autocomplete: "off", spellcheck: false });
+    const input = el("input", { placeholder, autocomplete: "off", spellcheck: false });
     input.setAttribute("role", "combobox");
     input.setAttribute("aria-expanded", "false");
     const list = el("div", { className: "ps-combo-list", role: "listbox", hidden: true });
@@ -130,7 +137,7 @@
     // uscendo dal campo: vuoto = nessun progetto, altrimenti torna al progetto scelto
     input.addEventListener("blur", () => { if (input.value.trim()) pick(cur, true); else pick(null); });
 
-    return { node, get value() { return cur; }, set: (p) => pick(p, true) };
+    return { node, get value() { return cur; }, set: (p) => pick(p, true), setProjects: (list) => { sorted = sortProjects(list); } };
   }
 
   const righe = (n) => `${n} ${n === 1 ? "riga" : "righe"}`;
@@ -440,5 +447,5 @@
     }
   }
 
-  Object.assign(PS, { renderTs });
+  Object.assign(PS, { renderTs, projectPicker });
 })();

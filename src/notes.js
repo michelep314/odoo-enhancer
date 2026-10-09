@@ -350,6 +350,7 @@
 
   /* ---------- pannello ---------- */
   let showDone = false;
+  let tab = "notes";  // "notes" | "watch" (avvisi automatici, in watch.js)
 
   function renderNotes(panel) {
     let editing = null;   // id della nota in modifica
@@ -474,17 +475,34 @@
     drawLink();
     drawList();
     form.open = !load().length;  // nessuna nota: il modulo parte aperto
-    PS.fill(panel,
-        el("h4", { textContent: "Note e promemoria" }),
+    const notesPart = el("div", {},
         form,
         listTitle,
         listBox,
+        el("p", { className: "hint", textContent: "Le note restano solo in questo browser (incluse nel backup della configurazione). Il promemoria arriva come notifica di Odoo se una sua pagina è aperta." }));
+    const watchPart = el("div", { hidden: true });
+    const seg = el("div", { className: "ps-seg" });
+    function drawTab() {
+      notesPart.hidden = tab !== "notes";
+      watchPart.hidden = tab !== "watch";
+      const n = PS.watchCount?.() || 0;
+      PS.fill(seg, ...[["notes", "Note"], ["watch", n ? `Avvisi automatici (${n})` : "Avvisi automatici"]].map(([k, label]) =>
+        el("button", { type: "button", className: k === tab ? "on" : "", textContent: label,
+          onclick: () => { tab = k; drawTab(); } })));
+      if (tab === "watch" && !watchPart.childElementCount) PS.renderWatch?.(watchPart, drawTab);
+    }
+    drawTab();
+    PS.fill(panel,
+        el("h4", { textContent: "Note e promemoria" }),
+        seg,
+        notesPart,
+        watchPart,
         el("div", { className: "inline ps-note-sound" },
-            chk("Suono quando scade un promemoria", opts.sound, (v) => { opts.sound = v; OPTS.save(opts); if (v) chime(); }),
+            chk("Suono per promemoria e avvisi", opts.sound, (v) => { opts.sound = v; OPTS.save(opts); if (v) chime(); }),
             el("button", { type: "button", textContent: "🔊 Prova", onclick: chime })),
-        el("p", { className: "hint", textContent: "Le note restano solo in questo browser (incluse nel backup della configurazione). Il promemoria arriva come notifica di Odoo se una sua pagina è aperta." }),
         el("div", { className: "acts" }, el("button", { textContent: "Chiudi", onclick: () => PS.togglePanel("notes") })));
   }
 
-  Object.assign(PS, { renderNotes, notesDue: dueCount, notesBadge });
+  // chime e soundOn servono anche agli avvisi automatici (watch.js)
+  Object.assign(PS, { renderNotes, notesDue: dueCount, notesBadge, chime, soundOn: () => OPTS.load().sound });
 })();

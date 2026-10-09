@@ -9,6 +9,13 @@
   // dalla più recente alla più vecchia; "how" (facoltativo) dice dove trovare la funzione
   const CHANGELOG = [
     {
+      version: "1.22", date: "2026-10-09",
+      items: [
+        { title: "Avvisi automatici", text: "Ricevi una notifica (con suono) quando arriva una nuova scheda in una colonna di un progetto, anche solo dello sprint corrente, di una user story o di certe priorità, oppure quando viene aperto un nuovo ticket. Scegli tu ogni quanto controllare.",
+          how: "Pannello note 📄 → Avvisi automatici" },
+      ],
+    },
+    {
       version: "1.21", date: "2026-10-09",
       items: [
         { title: "Copia un giorno nei fogli ore", text: "Scegli un giorno già compilato e copia le sue righe (tutte o solo alcune) negli altri giorni, saltando weekend, festivi e ferie.",

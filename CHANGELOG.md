@@ -4,6 +4,14 @@ Tutte le modifiche rilevanti di Odoo Enhancer. Il formato segue [Keep a Changelo
 
 > Quando si pubblica una versione aggiornare **insieme**: `manifest.json` (`version`), `src/changelog.js` (pannello ✨ Novità) e questo file.
 
+## [1.22] - 2026-10-09
+
+### Aggiunto
+- **Avvisi automatici** (pannello note → scheda "Avvisi automatici", `src/watch.js`): regole che fanno arrivare una notifica di Odoo, con il suono delle note, quando una **scheda di progetto** entra in una colonna (creata lì o spostata lì; filtri facoltativi: progetto, colonna, sprint corrente o corrente e precedente, user story, solo assegnate a me, una o più priorità dell'estensione ricavate dal colore della scheda) o quando si apre un **nuovo ticket** (tutti i team o uno solo, eventualmente solo non assegnati, una o più priorità del ticket con le etichette di Odoo). Una scheda già nella colonna che passa a una priorità sorvegliata conta come nuova. Frequenza del controllo scelta per ogni regola (ogni minuto, 5, 15, 30 minuti o ogni ora; predefinita 5 minuti, modificabile anche dalla tendina accanto all'avviso) per non interrogare Odoo più del necessario; lo sprint corrente si ricalcola al massimo ogni 10 minuti. Il controllo avviene da una sola scheda del browser; alla creazione o riattivazione la regola fotografa la situazione attuale e avvisa solo delle novità successive. Non avvisano le schede spostate da te né i ticket aperti da te. La notifica ha "Apri" (una scheda) o "Apri elenco" (più schede). Regole sospendibili ed eliminabili, salvate in `ps-watch-v1` e incluse nel backup.
+
+### Modificato
+- Scelta del progetto (fogli ore e avvisi automatici): campo con ricerca condiviso (`PS.projectPicker`), con come prima voce esattamente **"Progetto Omnibus"**, poi quelli che iniziano con "Progetto"/"Progetti", poi gli altri, ognuno in ordine alfabetico. Negli avvisi sostituisce la tendina; lasciarlo vuoto vale "tutti i progetti".
+
 ## [1.21] - 2026-10-09
 
 ### Aggiunto

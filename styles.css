@@ -490,3 +490,4 @@ html[data-ps-look] .ps-us{border-radius:max(3px,calc(var(--ps-radius) * .45))}
 #ps-panel details.news-all[open]{padding-bottom:0}
 #ps-panel details.news-all details.news-old{margin:4px 0 0}
 #ps-panel details.news-all details.news-old summary{padding:6px 10px;font-size:12.5px}
+#ps-panel .ps-prio-pick{display:flex;flex-wrap:wrap;gap:6px}
