@@ -9,6 +9,13 @@
   // dalla più recente alla più vecchia; "how" (facoltativo) dice dove trovare la funzione
   const CHANGELOG = [
     {
+      version: "1.24", date: "2026-10-09",
+      items: [
+        { title: "Icone delle colonne più visibili", text: "Filtro e campanella nell'intestazione delle colonne sono più grandi e leggibili anche sopra le immagini di sfondo. La campanella diventa gialla quando la colonna ha un avviso attivo.",
+          how: "Intestazione delle colonne del kanban" },
+      ],
+    },
+    {
       version: "1.23", date: "2026-10-09",
       items: [
         { title: "Campanella sulle colonne", text: "Clicca la 🔔 sull'intestazione di una colonna per essere avvisato quando ci arriva una nuova scheda: progetto, sprint e user story sono già proposti. Diventa colorata quando la colonna ha un avviso attivo.",

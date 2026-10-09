@@ -4,13 +4,17 @@ Tutte le modifiche rilevanti di Odoo Enhancer. Il formato segue [Keep a Changelo
 
 > Quando si pubblica una versione aggiornare **insieme**: `manifest.json` (`version`), `src/changelog.js` (pannello ✨ Novità) e questo file.
 
+## [1.24] - 2026-10-09
+
+### Modificato
+- Icone nell'intestazione delle colonne (filtro e campanella) più visibili: 16 px su una pastiglia leggera invece di 14 px semitrasparenti; sopra un'immagine di sfondo bianche con alone su pastiglia scura. Filtro attivo viola, campanella con avviso attivo gialla; con le intestazioni colorate lo stato attivo mantiene i suoi colori.
+
 ## [1.23] - 2026-10-09
 
 ### Aggiunto
 - **🔔 Campanella sulle colonne** del kanban delle schede (accanto al filtro della colonna, `PS.watchBell` in `src/watch.js`): crea l'avviso automatico già legato a quella colonna, senza cercarla nel pannello. Propone il progetto della vista (dal contesto dell'azione o se tutte le schede sono dello stesso progetto), lo sprint corrente se le schede hanno uno sprint, e una tendina con le US presenti nella colonna; restano da scegliere priorità, "solo assegnate a me", frequenza e Google Chat. La campanella diventa colorata quando sulla colonna c'è almeno un avviso attivo e il popover mostra gli avvisi esistenti, sospendibili, con frequenza modificabile ed eliminabili; "Tutti gli avvisi" apre la scheda nel pannello note. Solo nei kanban delle schede di progetto.
 
 ### Modificato
-- Icone nell'intestazione delle colonne (filtro e campanella) più visibili: 16 px su una pastiglia leggera invece di 14 px semitrasparenti; sopra un'immagine di sfondo bianche con alone su pastiglia scura. Filtro attivo viola, campanella con avviso attivo gialla; con le intestazioni colorate lo stato attivo mantiene i suoi colori.
 - `src/watch.js`: priorità, frequenza, Google Chat, creazione e riga degli avvisi diventano funzioni comuni a campanella e pannello note.
 
 ## [1.22] - 2026-10-09
